@@ -92,8 +92,3 @@ class Incident(IncidentCreate):
 
     id: str
     created_at: AwareDatetime
-    notification_requested_at: AwareDatetime | None = None
-    """
-    Set by the Core API once the notification service has accepted the notification.
-    While it is null, the ingestion worker keeps asking for notifications.
-    """

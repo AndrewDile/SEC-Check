@@ -3,7 +3,7 @@
 import httpx
 
 from ingestion_worker import config
-from ingestion_worker.models import Dependency, Incident, IncidentCreate
+from ingestion_worker.models import Dependency, IncidentCreate
 
 _http = httpx.Client(
     base_url=config.CORE_API_URL,
@@ -19,13 +19,8 @@ def list_dependencies() -> list[Dependency]:
     return [Dependency.model_validate(item) for item in response.json()]
 
 
-def create_incident(incident: IncidentCreate) -> Incident:
-    """Store an incident, or get the existing one back if it was already reported."""
+def create_incident(incident: IncidentCreate) -> bool:
+    """Store an incident. Returns False if the Core API already had it."""
     response = _http.post("/ingest/incidents", json=incident.model_dump(mode="json"))
     response.raise_for_status()
-    return Incident.model_validate(response.json())
-
-
-def request_notifications(incident_id: str) -> None:
-    """Ask the Core API to notify all of the incident's company's teams."""
-    _http.post(f"/ingest/incidents/{incident_id}/notifications").raise_for_status()
+    return response.status_code == 201

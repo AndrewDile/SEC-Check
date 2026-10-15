@@ -54,9 +54,10 @@ webhooks:
       summary: Hand a notification to the notification service
       description: |
         Sent by the Core API to `POST /notifications` on the notification service
-        (port 8001 by default). The notification service answers right away, delivers
-        afterwards, and then calls `reportNotificationResults`. Repeating a
-        `notification_id` is a no-op, so the Core API can safely retry.
+        (port 8001 by default) whenever it creates an incident. The Core API retries until it
+        gets `202`, which is safe because repeating a `notification_id` is a no-op. The
+        notification service answers right away, delivers afterwards, and then calls
+        `reportNotificationResults`.
       tags: [Notifications]
       requestBody:
         required: true

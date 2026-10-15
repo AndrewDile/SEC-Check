@@ -3,13 +3,15 @@
 # CORE_API_URL to the Core API's service name and port.
 #
 # Set these in the environment or in a .env file next to the compose file. The Core API needs
-# the same values to check the tokens it receives and to send NOTIF_INBOUND_TOKEN.
+# the same values to check the tokens it receives and to send the two INBOUND tokens.
 #   INGEST_CORE_API_TOKEN  the token the worker sends to the Core API
+#   INGEST_INBOUND_TOKEN   the token the Core API must send to the worker
 #   NOTIF_CORE_API_TOKEN   the token the notifier sends to the Core API
 #   NOTIF_INBOUND_TOKEN    the token the Core API must send to the notifier
 #   SEC_USER_AGENT         who we are to the SEC, e.g. "Team Name admin@example.com"
 #
-# The Core API reaches the notifier at http://notification-service:8001/notifications.
+# The Core API reaches the worker at http://ingestion-worker:8002/dependencies/{id}, and the
+# notifier at http://notification-service:8001/notifications.
 
 services:
   ingestion-worker:
@@ -19,6 +21,7 @@ services:
     environment:
       CORE_API_URL: http://core-api:8000
       CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
+      INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
       SEC_USER_AGENT: ${SEC_USER_AGENT}
     restart: unless-stopped
 

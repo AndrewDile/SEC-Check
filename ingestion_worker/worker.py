@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from ingestion_worker import config, core_api
+from ingestion_worker import config, core_api, dependency_cache
 from ingestion_worker.matching import find_matches
 from ingestion_worker.models import IncidentCreate, MatchedDependency
 from ingestion_worker.sources.base import Source, SourceEvent
@@ -28,14 +28,14 @@ def run_forever(sources: list[Source]) -> None:
 def poll(source: Source) -> bool:
     """Poll `source` once and report every match. Returns False if anything failed.
 
-    Nothing is remembered between polls. Each poll re-checks the last LOOKBACK_DAYS,
+    No incidents are remembered between polls. Each poll re-checks the last LOOKBACK_DAYS,
     and the Core API ignores incidents it already has, so anything that fails here
     is tried again on the next poll.
     """
     since = datetime.now(UTC) - timedelta(days=config.LOOKBACK_DAYS)
     try:
         events = source.fetch(since)
-        dependencies = core_api.list_dependencies()
+        dependencies = dependency_cache.get_all()
     except Exception:  # whatever goes wrong, keep polling the other sources
         log.exception("%s: poll failed", source.name)
         return False
@@ -61,8 +61,8 @@ def poll(source: Source) -> bool:
 def report(
     source: Source, event: SourceEvent, company_id: str, matches: list[MatchedDependency]
 ) -> None:
-    """Send one incident to the Core API, then request notifications if that hasn't happened yet."""
-    incident = core_api.create_incident(
+    """Send one incident to the Core API, which notifies the company's teams if it is new."""
+    is_new = core_api.create_incident(
         IncidentCreate(
             company_id=company_id,
             source=source.name,
@@ -77,12 +77,5 @@ def report(
             details=event.details,
         )
     )
-    if incident.notification_requested_at is None:
-        core_api.request_notifications(incident.id)
-        log.info(
-            "%s: notifying company %s of incident %s (%s)",
-            source.name,
-            company_id,
-            incident.id,
-            event.title,
-        )
+    if is_new:
+        log.info("%s: new incident for company %s: %s", source.name, company_id, event.title)

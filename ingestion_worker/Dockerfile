@@ -9,5 +9,8 @@ RUN uv sync --locked
 COPY ingestion_worker ./ingestion_worker
 
 ENV PATH="/app/.venv/bin:$PATH"
+# Listen on every interface, so other containers can reach the service.
+ENV HOST=0.0.0.0 PORT=8002
+EXPOSE 8002
 USER nobody
 CMD ["python", "-m", "ingestion_worker"]

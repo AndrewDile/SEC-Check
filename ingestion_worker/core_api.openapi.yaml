@@ -4,9 +4,13 @@ info:
   title: Core API (ingestion worker)
   version: 0.1.0
   description: |
-    The Core API calls the ingestion worker makes, proposed for the team to merge with the
-    other services' parts. The notification service's part is in
+    The calls between the Core API and the ingestion worker, proposed for the team to merge
+    with the other services' parts. The notification service's part is in
     notification_service/core_api.openapi.yaml.
+
+    - **Paths** are served by the Core API.
+    - **Webhooks** are sent by the Core API to the ingestion worker. The Core API retries each
+      one until it succeeds, and sends each dependency's events in order.
 
 servers:
   - url: http://localhost:8000
@@ -24,7 +28,10 @@ paths:
     get:
       operationId: listDependencies
       summary: List every software dependency of every company
-      description: Called on every poll. Returns everything in one response.
+      description: |
+        Called when the worker starts (and on later polls, until it succeeds) to load every
+        dependency. After that, the dependency webhooks keep the worker's copy up to date.
+        Returns everything in one response.
       tags: [Dependencies]
       responses:
         "200":
@@ -45,6 +52,9 @@ paths:
         already has returns the stored one with `200` instead of creating a duplicate.
         The worker relies on this, because every poll re-reports everything in its
         lookback window.
+
+        When it creates a new incident, the Core API notifies the company's teams itself, with
+        the `notification` webhook in notification_service/core_api.openapi.yaml.
       tags: [Incidents]
       requestBody:
         required: true
@@ -64,36 +74,54 @@ paths:
               schema: { $ref: "#/components/schemas/Incident" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /ingest/incidents/{incident_id}/notifications:
-    post:
-      operationId: requestNotifications
-      summary: Notify every team of the incident's company
+webhooks:
+  dependencyChanged:
+    put:
+      operationId: putDependency
+      summary: Tell the worker a dependency was added or changed
       description: |
-        Called while the incident's `notification_requested_at` is null. The Core API builds
-        a `NotificationRequest` (one recipient per contact method of every team of the
-        company, plus the web app's `claim_url`) and sends it to the notification service as
-        the `notification` webhook in notification_service/core_api.openapi.yaml. It sets
-        `notification_requested_at` only once the notification service answers `202`, so a
-        notifier that was down is retried on the worker's next poll.
-      tags: [Incidents]
+        Sent by the Core API to `PUT /dependencies/{dependency_id}` on the ingestion worker
+        (port 8002 by default). The worker matches the new version from its next poll on.
+      tags: [Dependencies]
       parameters:
-        - name: incident_id
+        - name: dependency_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Dependency" }
+      responses:
+        "204":
+          description: The worker's copy is up to date.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  dependencyDeleted:
+    delete:
+      operationId: deleteDependency
+      summary: Tell the worker a dependency was removed
+      description: Sent by the Core API to `DELETE /dependencies/{dependency_id}` on the ingestion worker.
+      tags: [Dependencies]
+      parameters:
+        - name: dependency_id
           in: path
           required: true
           schema: { type: string }
       responses:
-        "202":
-          description: Accepted.
+        "204":
+          description: The worker's copy is up to date.
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404":
-          description: No incident has this ID.
 
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: The static token in the worker's `CORE_API_TOKEN` environment variable.
+      description: |
+        A static token for each direction: the worker sends `CORE_API_TOKEN` to the Core API,
+        and the Core API sends the worker's `INBOUND_TOKEN`.
 
   responses:
     Unauthorized:
@@ -195,9 +223,3 @@ components:
           properties:
             id: { type: string }
             created_at: { type: string, format: date-time }
-            notification_requested_at:
-              type: [string, "null"]
-              format: date-time
-              description: |-
-                Set by the Core API once the notification service has accepted the notification.
-                While it is null, the ingestion worker keeps asking for notifications.
