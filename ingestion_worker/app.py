@@ -1,4 +1,4 @@
-"""The ingestion worker's HTTP API, which receives the Core API's dependency events."""
+"""The ingestion worker's API, defined in openapi.yaml. Only the Core API calls it."""
 
 import secrets
 

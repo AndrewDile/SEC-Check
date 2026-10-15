@@ -1,16 +1,14 @@
-# The ingestion worker's part of the Core API contract. After changing it, run generate_models.sh.
+# What the ingestion worker needs from the Core API. After changing it, run generate_models.sh.
 openapi: 3.1.0
 info:
-  title: Core API (ingestion worker)
+  title: Core API (ingestion worker's needs)
   version: 0.1.0
   description: |
-    The calls between the Core API and the ingestion worker, proposed for the team to merge
-    with the other services' parts. The notification service's part is in
-    notification_service/core_api.openapi.yaml.
+    The Core API endpoints the ingestion worker calls, and the payloads it exchanges with the
+    Core API. The Core API service aggregates this with every other service's needs.
 
-    - **Paths** are served by the Core API.
-    - **Webhooks** are sent by the Core API to the ingestion worker. The Core API retries each
-      one until it succeeds, and sends each dependency's events in order.
+    Services never call each other. The Core API calls the worker through the worker's own
+    API (openapi.yaml), whose payloads are defined here.
 
 servers:
   - url: http://localhost:8000
@@ -20,8 +18,7 @@ security:
   - bearerAuth: []
 
 tags:
-  - name: Dependencies
-  - name: Incidents
+  - name: Ingestion worker
 
 paths:
   /ingest/dependencies:
@@ -30,9 +27,9 @@ paths:
       summary: List every software dependency of every company
       description: |
         Called when the worker starts (and on later polls, until it succeeds) to load every
-        dependency. After that, the dependency webhooks keep the worker's copy up to date.
-        Returns everything in one response.
-      tags: [Dependencies]
+        dependency. After that, the Core API keeps the worker's copy up to date through the
+        worker's API. Returns everything in one response.
+      tags: [Ingestion worker]
       responses:
         "200":
           description: All dependencies.
@@ -53,9 +50,8 @@ paths:
         The worker relies on this, because every poll re-reports everything in its
         lookback window.
 
-        When it creates a new incident, the Core API notifies the company's teams itself, with
-        the `notification` webhook in notification_service/core_api.openapi.yaml.
-      tags: [Incidents]
+        When it creates a new incident, the Core API notifies the company's teams itself.
+      tags: [Ingestion worker]
       requestBody:
         required: true
         content:
@@ -74,71 +70,19 @@ paths:
               schema: { $ref: "#/components/schemas/Incident" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-webhooks:
-  dependencyChanged:
-    put:
-      operationId: putDependency
-      summary: Tell the worker a dependency was added or changed
-      description: |
-        Sent by the Core API to `PUT /dependencies/{dependency_id}` on the ingestion worker
-        (port 8002 by default). The worker matches the new version from its next poll on.
-      tags: [Dependencies]
-      parameters:
-        - name: dependency_id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/Dependency" }
-      responses:
-        "204":
-          description: The worker's copy is up to date.
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
-  dependencyDeleted:
-    delete:
-      operationId: deleteDependency
-      summary: Tell the worker a dependency was removed
-      description: Sent by the Core API to `DELETE /dependencies/{dependency_id}` on the ingestion worker.
-      tags: [Dependencies]
-      parameters:
-        - name: dependency_id
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        "204":
-          description: The worker's copy is up to date.
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: |
-        A static token for each direction: the worker sends `CORE_API_TOKEN` to the Core API,
-        and the Core API sends the worker's `INBOUND_TOKEN`.
+      description: The static token in the worker's `CORE_API_TOKEN`.
 
   responses:
     Unauthorized:
       description: The bearer token is missing or wrong.
 
   schemas:
-    SourceName:
-      type: string
-      enum: [cisa_kev, sec_edgar_8k]
-
-    Priority:
-      type: string
-      enum: [critical, high, medium, low]
-
-    Confidence:
-      type: string
-      enum: [high, medium]
+    # Dependencies ----------------------------------------------------------
 
     Dependency:
       description: A piece of software a company has told us it uses.
@@ -159,6 +103,20 @@ components:
         vendor_cik:
           type: [string, "null"]
           description: The vendor's SEC CIK, if it is a public company.
+
+    # Incidents. Other services' needs may define these too; once aggregated, they must agree.
+
+    SourceName:
+      type: string
+      enum: [cisa_kev, sec_edgar_8k]
+
+    Priority:
+      type: string
+      enum: [critical, high, medium, low]
+
+    Confidence:
+      type: string
+      enum: [high, medium]
 
     MatchedDependency:
       description: One of the company's dependencies that an incident may affect, and why we think so.
@@ -215,7 +173,7 @@ components:
           description: Source-specific extras.
 
     Incident:
-      description: An incident as the Core API stores it. The notification service receives it too.
+      description: An incident as the Core API stores it.
       allOf:
         - $ref: "#/components/schemas/IncidentCreate"
         - type: object

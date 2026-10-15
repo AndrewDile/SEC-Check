@@ -6,14 +6,6 @@ from typing import Any, Literal
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel
 
-type SourceName = Literal["cisa_kev", "sec_edgar_8k"]
-
-
-type Priority = Literal["critical", "high", "medium", "low"]
-
-
-type Confidence = Literal["high", "medium"]
-
 
 class Dependency(BaseModel):
     """
@@ -37,6 +29,15 @@ class Dependency(BaseModel):
     """
     The vendor's SEC CIK, if it is a public company.
     """
+
+
+type SourceName = Literal["cisa_kev", "sec_edgar_8k"]
+
+
+type Priority = Literal["critical", "high", "medium", "low"]
+
+
+type Confidence = Literal["high", "medium"]
 
 
 class MatchedDependency(BaseModel):
@@ -87,7 +88,7 @@ class IncidentCreate(BaseModel):
 
 class Incident(IncidentCreate):
     """
-    An incident as the Core API stores it. The notification service receives it too.
+    An incident as the Core API stores it.
     """
 
     id: str

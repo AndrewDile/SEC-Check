@@ -6,21 +6,6 @@ from typing import Any, Literal
 
 from pydantic import AnyUrl, AwareDatetime, BaseModel, Field
 
-
-class Recipient(BaseModel):
-    """
-    One way to reach one team. The Core API sends one per contact method of every team.
-    """
-
-    recipient_id: str
-    team_name: str
-    channel: str = Field(..., examples=["email", "sms", "ms_teams"])
-    address: str
-    """
-    What the channel needs: an email address, a phone number, a webhook URL, ...
-    """
-
-
 type SourceName = Literal["cisa_kev", "sec_edgar_8k"]
 
 
@@ -28,30 +13,6 @@ type Priority = Literal["critical", "high", "medium", "low"]
 
 
 type Confidence = Literal["high", "medium"]
-
-
-class Dependency(BaseModel):
-    """
-    A piece of software a company has told us it uses.
-    """
-
-    id: str
-    company_id: str
-    vendor: str
-    product: str
-    version: str | None = None
-    cpe: str | None = None
-    """
-    Not used for matching yet. For future sources like NVD.
-    """
-    purl: str | None = None
-    """
-    Not used for matching yet. For future sources like OSV.
-    """
-    vendor_cik: str | None = None
-    """
-    The vendor's SEC CIK, if it is a public company.
-    """
 
 
 class MatchedDependency(BaseModel):
@@ -100,6 +61,46 @@ class IncidentCreate(BaseModel):
     """
 
 
+class Incident(IncidentCreate):
+    """
+    An incident as the Core API stores it.
+    """
+
+    id: str
+    created_at: AwareDatetime
+
+
+class Recipient(BaseModel):
+    """
+    One way to reach one team. The Core API sends one per contact method of every team.
+    """
+
+    recipient_id: str
+    team_name: str
+    channel: str = Field(..., examples=["email", "sms", "ms_teams"])
+    address: str
+    """
+    What the channel needs: an email address, a phone number, a webhook URL, ...
+    """
+
+
+class NotificationRequest(BaseModel):
+    """
+    What the Core API sends the notification service when it creates an incident.
+    """
+
+    notification_id: str
+    """
+    Repeating an ID is a no-op, so the Core API can safely retry.
+    """
+    incident: Incident
+    claim_url: AnyUrl
+    """
+    The web app page where a team claims the incident.
+    """
+    recipients: list[Recipient]
+
+
 type DeliveryStatus = Literal["delivered", "failed"]
 
 
@@ -116,25 +117,3 @@ class DeliveryResult(BaseModel):
 
 class NotificationResults(BaseModel):
     results: list[DeliveryResult]
-
-
-class Incident(IncidentCreate):
-    """
-    An incident as the Core API stores it. The notification service receives it too.
-    """
-
-    id: str
-    created_at: AwareDatetime
-
-
-class NotificationRequest(BaseModel):
-    notification_id: str
-    """
-    Repeating an ID is a no-op, so the Core API can safely retry.
-    """
-    incident: Incident
-    claim_url: AnyUrl
-    """
-    The web app page where a team claims the incident.
-    """
-    recipients: list[Recipient]

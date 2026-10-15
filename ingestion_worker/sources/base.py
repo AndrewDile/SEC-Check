@@ -27,8 +27,9 @@ class Source(ABC):
     """A third-party feed the worker polls.
 
     To add a source, subclass this and add an instance to ALL_SOURCES in
-    sources/__init__.py. Its `name` must also be added to SourceName in
-    core_api.openapi.yaml, followed by running generate_models.sh.
+    sources/__init__.py. Its `name` must also be added to SourceName in the
+    core_api.openapi.yaml of every service that defines it, followed by running that
+    service's generate_models.sh.
     """
 
     name: SourceName

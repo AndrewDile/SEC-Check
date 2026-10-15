@@ -1,0 +1,57 @@
+# The ingestion worker's API. Only the Core API calls it. Payloads are in core_api.openapi.yaml.
+openapi: 3.1.0
+info:
+  title: Ingestion worker API
+  version: 0.1.0
+  description: |
+    How the Core API tells the ingestion worker that dependencies changed. Only the Core API
+    calls it. The Core API retries each call until it succeeds, and sends each dependency's
+    changes in order. Both calls are idempotent, so retrying is safe.
+
+servers:
+  - url: http://localhost:8002
+    description: Local development (the worker's default `PORT`)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /dependencies/{dependency_id}:
+    parameters:
+      - name: dependency_id
+        in: path
+        required: true
+        schema: { type: string }
+
+    put:
+      operationId: putDependency
+      summary: A dependency was added or changed
+      description: The worker matches the new version from its next poll on.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "core_api.openapi.yaml#/components/schemas/Dependency" }
+      responses:
+        "204":
+          description: The worker's copy is up to date.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+    delete:
+      operationId: deleteDependency
+      summary: A dependency was removed
+      responses:
+        "204":
+          description: The worker's copy is up to date.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The static token in the worker's `INBOUND_TOKEN`. Only the Core API has it.
+
+  responses:
+    Unauthorized:
+      description: The bearer token is missing or wrong.

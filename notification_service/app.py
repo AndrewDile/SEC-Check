@@ -1,4 +1,4 @@
-"""The notification service's HTTP API. Its only caller is the Core API."""
+"""The notification service's API, defined in openapi.yaml. Only the Core API calls it."""
 
 import secrets
 

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Regenerate models.py from core_api.openapi.yaml. Run it after changing the YAML.
+# Regenerate models.py from core_api.openapi.yaml, which defines the payloads of every API
+# this service calls or serves. Run it after changing that file.
 set -e
 cd "$(dirname "$0")"
 uvx --from 'datamodel-code-generator[ruff]==0.84.0' datamodel-codegen \

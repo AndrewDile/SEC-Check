@@ -1,4 +1,4 @@
-"""The Core API calls the ingestion worker makes. Payloads are in core_api.openapi.yaml."""
+"""The Core API calls the ingestion worker makes, as defined in core_api.openapi.yaml."""
 
 import httpx
 

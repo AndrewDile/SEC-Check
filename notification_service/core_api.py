@@ -1,4 +1,4 @@
-"""The Core API calls the notification service makes. Payloads are in core_api.openapi.yaml."""
+"""The Core API calls the notification service makes, as defined in core_api.openapi.yaml."""
 
 import httpx
 
