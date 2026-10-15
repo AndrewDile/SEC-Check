@@ -4,9 +4,9 @@ import secrets
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 
-from core_api_contract import NotificationRequest
 from notification_service import config
 from notification_service.dispatcher import dispatch
+from notification_service.models import NotificationRequest
 
 app = FastAPI(title="Notification Service")
 
@@ -20,7 +20,7 @@ def _check_token(authorization: str = Header("")) -> None:
         raise HTTPException(status_code=401)
 
 
-@app.post("/v1/notifications", status_code=202, dependencies=[Depends(_check_token)])
+@app.post("/notifications", status_code=202, dependencies=[Depends(_check_token)])
 def accept_notification(request: NotificationRequest, background: BackgroundTasks) -> dict:
     """Accept a notification and deliver it after responding."""
     if request.notification_id not in _accepted:

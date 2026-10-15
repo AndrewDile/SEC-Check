@@ -11,7 +11,7 @@ the whole team should weigh in. Part 2 only affects these two services.
 2. **Duplicate incidents.** The Core API treats `(company_id, source, external_id)` as unique,
    and reporting the same incident again returns the existing one with `200`. The worker
    relies on this, because every poll re-reports everything in its lookback window.
-3. **Who triggers notifications.** The worker calls `POST /v1/incidents/{id}/notifications`
+3. **Who triggers notifications.** The worker calls `POST /ingest/incidents/{id}/notifications`
    after creating an incident. The alternative is for the Core API to notify automatically
    whenever it creates one. That saves a call, but takes control away from the worker.
 4. **`notification_requested_at`.** The Core API sets it only after the notification service
@@ -26,7 +26,7 @@ the whole team should weigh in. Part 2 only affects these two services.
 8. **Dependency records.** `vendor` and `product` are required; `version`, `cpe`, `purl` and
    `vendor_cik` are optional. The web app has to collect them. Matching uses only `vendor`,
    `product` and `vendor_cik` for now. `cpe` and `purl` are there for future sources (NVD, OSV).
-9. **Pagination.** `GET /v1/dependencies` returns everything in one response. That's fine
+9. **Pagination.** `GET /ingest/dependencies` returns everything in one response. That's fine
    for now; add paging once there are many companies.
 
 ## Part 2: For the two services
@@ -49,8 +49,9 @@ the whole team should weigh in. Part 2 only affects these two services.
     fine with only the log channel; real channels may need to send in parallel.
 17. **Unclaimed incidents.** No reminders or escalation yet. The Core API can simply send
     another `NotificationRequest` later.
-18. **Deployment.** Not decided. The worker's `--once` flag lets it run from cron, a
-    Kubernetes CronJob or a serverless scheduler. The notifier is an ordinary web app.
+18. **Deployment.** Each service has a Dockerfile, and `docker-compose.yml` runs both, with
+    the worker polling continuously. Its `--once` flag also lets it run from cron, a
+    Kubernetes CronJob or a serverless scheduler instead.
 
 ## Known limitations
 
@@ -64,4 +65,4 @@ the whole team should weigh in. Part 2 only affects these two services.
   8-K's items, but that only works for vendors whose CIK we know.
 - **Filings with several filers.** When an 8-K lists several companies (e.g. a parent and its
   subsidiaries), only the first one is matched.
-- **Not built yet:** tests, a Core API stub for running locally, and Docker files.
+- **Not built yet:** tests and a Core API stub for running locally.

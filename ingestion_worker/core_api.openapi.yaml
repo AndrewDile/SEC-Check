@@ -1,0 +1,203 @@
+# The ingestion worker's part of the Core API contract. After changing it, run generate_models.sh.
+openapi: 3.1.0
+info:
+  title: Core API (ingestion worker)
+  version: 0.1.0
+  description: |
+    The Core API calls the ingestion worker makes, proposed for the team to merge with the
+    other services' parts. The notification service's part is in
+    notification_service/core_api.openapi.yaml.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (the worker's default `CORE_API_URL`)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Dependencies
+  - name: Incidents
+
+paths:
+  /ingest/dependencies:
+    get:
+      operationId: listDependencies
+      summary: List every software dependency of every company
+      description: Called on every poll. Returns everything in one response.
+      tags: [Dependencies]
+      responses:
+        "200":
+          description: All dependencies.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Dependency" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /ingest/incidents:
+    post:
+      operationId: createIncident
+      summary: Report a possible incident for one company
+      description: |
+        `(company_id, source, external_id)` is unique: reporting an incident the Core API
+        already has returns the stored one with `200` instead of creating a duplicate.
+        The worker relies on this, because every poll re-reports everything in its
+        lookback window.
+      tags: [Incidents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IncidentCreate" }
+      responses:
+        "201":
+          description: A new incident was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "200":
+          description: The incident was already reported. This is the stored one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /ingest/incidents/{incident_id}/notifications:
+    post:
+      operationId: requestNotifications
+      summary: Notify every team of the incident's company
+      description: |
+        Called while the incident's `notification_requested_at` is null. The Core API builds
+        a `NotificationRequest` (one recipient per contact method of every team of the
+        company, plus the web app's `claim_url`) and sends it to the notification service as
+        the `notification` webhook in notification_service/core_api.openapi.yaml. It sets
+        `notification_requested_at` only once the notification service answers `202`, so a
+        notifier that was down is retried on the worker's next poll.
+      tags: [Incidents]
+      parameters:
+        - name: incident_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: Accepted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No incident has this ID.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The static token in the worker's `CORE_API_TOKEN` environment variable.
+
+  responses:
+    Unauthorized:
+      description: The bearer token is missing or wrong.
+
+  schemas:
+    SourceName:
+      type: string
+      enum: [cisa_kev, sec_edgar_8k]
+
+    Priority:
+      type: string
+      enum: [critical, high, medium, low]
+
+    Confidence:
+      type: string
+      enum: [high, medium]
+
+    Dependency:
+      description: A piece of software a company has told us it uses.
+      type: object
+      required: [id, company_id, vendor, product]
+      properties:
+        id: { type: string }
+        company_id: { type: string }
+        vendor: { type: string }
+        product: { type: string }
+        version: { type: [string, "null"] }
+        cpe:
+          type: [string, "null"]
+          description: Not used for matching yet. For future sources like NVD.
+        purl:
+          type: [string, "null"]
+          description: Not used for matching yet. For future sources like OSV.
+        vendor_cik:
+          type: [string, "null"]
+          description: The vendor's SEC CIK, if it is a public company.
+
+    MatchedDependency:
+      description: One of the company's dependencies that an incident may affect, and why we think so.
+      type: object
+      required: [dependency_id, vendor, product, confidence, reason]
+      properties:
+        dependency_id: { type: string }
+        vendor: { type: string }
+        product: { type: string }
+        version: { type: [string, "null"] }
+        confidence: { $ref: "#/components/schemas/Confidence" }
+        reason: { type: string }
+
+    IncidentCreate:
+      description: A possible incident for one company, found by the ingestion worker.
+      type: object
+      required:
+        - company_id
+        - source
+        - external_id
+        - title
+        - summary
+        - source_url
+        - published_at
+        - detected_at
+        - priority_hint
+        - matched_dependencies
+      properties:
+        company_id: { type: string }
+        source: { $ref: "#/components/schemas/SourceName" }
+        external_id:
+          type: string
+          description: "The source's own ID: a CVE ID, an SEC accession number, ..."
+        title: { type: string }
+        summary: { type: string }
+        source_url: { type: string, format: uri }
+        published_at:
+          type: string
+          format: date-time
+          description: When the source published it.
+        detected_at:
+          type: string
+          format: date-time
+          description: When we matched it, for the audit trail.
+        priority_hint:
+          $ref: "#/components/schemas/Priority"
+          description: A hint for sorting only. Whether an incident is material is for the company to decide.
+        matched_dependencies:
+          type: array
+          items: { $ref: "#/components/schemas/MatchedDependency" }
+        details:
+          type: object
+          default: {}
+          description: Source-specific extras.
+
+    Incident:
+      description: An incident as the Core API stores it. The notification service receives it too.
+      allOf:
+        - $ref: "#/components/schemas/IncidentCreate"
+        - type: object
+          required: [id, created_at]
+          properties:
+            id: { type: string }
+            created_at: { type: string, format: date-time }
+            notification_requested_at:
+              type: [string, "null"]
+              format: date-time
+              description: |-
+                Set by the Core API once the notification service has accepted the notification.
+                While it is null, the ingestion worker keeps asking for notifications.

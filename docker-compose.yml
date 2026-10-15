@@ -1,0 +1,33 @@
+# The ingestion worker and the notification service, to copy into the team's docker-compose.yml.
+# After copying, set each `context` to this folder's path relative to that file, and
+# CORE_API_URL to the Core API's service name and port.
+#
+# Set these in the environment or in a .env file next to the compose file. The Core API needs
+# the same values to check the tokens it receives and to send NOTIF_INBOUND_TOKEN.
+#   INGEST_CORE_API_TOKEN  the token the worker sends to the Core API
+#   NOTIF_CORE_API_TOKEN   the token the notifier sends to the Core API
+#   NOTIF_INBOUND_TOKEN    the token the Core API must send to the notifier
+#   SEC_USER_AGENT         who we are to the SEC, e.g. "Team Name admin@example.com"
+#
+# The Core API reaches the notifier at http://notification-service:8001/notifications.
+
+services:
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: ingestion_worker/Dockerfile
+    environment:
+      CORE_API_URL: http://core-api:8000
+      CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
+      SEC_USER_AGENT: ${SEC_USER_AGENT}
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification_service/Dockerfile
+    environment:
+      CORE_API_URL: http://core-api:8000
+      CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
+      INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
+    restart: unless-stopped

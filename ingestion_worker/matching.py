@@ -8,7 +8,7 @@ data. The team that claims an incident checks whether their version is affected.
 import re
 from collections import defaultdict
 
-from core_api_contract import Confidence, Dependency, MatchedDependency
+from ingestion_worker.models import Confidence, Dependency, MatchedDependency
 from ingestion_worker.sources.base import SourceEvent
 
 # Words dropped from the end of vendor names, so that "Cisco Systems, Inc." matches "Cisco".

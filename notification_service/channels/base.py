@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from core_api_contract import Recipient
+from notification_service.models import Recipient
 
 
 @dataclass

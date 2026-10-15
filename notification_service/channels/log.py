@@ -1,7 +1,7 @@
 import logging
 
-from core_api_contract import Recipient
 from notification_service.channels.base import Channel, Message
+from notification_service.models import Recipient
 
 log = logging.getLogger(__name__)
 

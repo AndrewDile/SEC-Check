@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from core_api_contract import Priority, SourceName
+from ingestion_worker.models import Priority, SourceName
 
 
 @dataclass
@@ -28,7 +28,7 @@ class Source(ABC):
 
     To add a source, subclass this and add an instance to ALL_SOURCES in
     sources/__init__.py. Its `name` must also be added to SourceName in
-    core_api_contract.py.
+    core_api.openapi.yaml, followed by running generate_models.sh.
     """
 
     name: SourceName

@@ -4,10 +4,15 @@ import logging
 import time
 from datetime import UTC, datetime
 
-from core_api_contract import DeliveryResult, DeliveryStatus, NotificationRequest, Recipient
 from notification_service import config, core_api
 from notification_service.channels import CHANNELS
 from notification_service.channels.base import Message, PermanentDeliveryError
+from notification_service.models import (
+    DeliveryResult,
+    DeliveryStatus,
+    NotificationRequest,
+    Recipient,
+)
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +62,7 @@ def render(request: NotificationRequest) -> Message:
             published=incident.published_at.date(),
             claim_url=request.claim_url,
         ),
-        claim_url=request.claim_url,
+        claim_url=str(request.claim_url),
     )
 
 

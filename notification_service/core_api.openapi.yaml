@@ -1,0 +1,146 @@
+# The notification service's part of the Core API contract. After changing it, run generate_models.sh.
+openapi: 3.1.0
+info:
+  title: Core API (notification service)
+  version: 0.1.0
+  description: |
+    The calls between the Core API and the notification service, proposed for the team to
+    merge with the other services' parts. The ingestion worker's part is in
+    ingestion_worker/core_api.openapi.yaml.
+
+    - **Paths** are served by the Core API.
+    - **Webhooks** are sent by the Core API to the notification service.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (the notifier's default `CORE_API_URL`)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Notifications
+
+paths:
+  /notif/notifications/{notification_id}/results:
+    post:
+      operationId: reportNotificationResults
+      summary: Report which recipients a notification reached
+      description: |
+        Called by the notification service after it has tried every recipient.
+        The Core API keeps the results as the audit trail.
+      tags: [Notifications]
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationResults" }
+      responses:
+        "200":
+          description: The results were stored.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No notification has this ID.
+
+webhooks:
+  notification:
+    post:
+      operationId: sendNotification
+      summary: Hand a notification to the notification service
+      description: |
+        Sent by the Core API to `POST /notifications` on the notification service
+        (port 8001 by default). The notification service answers right away, delivers
+        afterwards, and then calls `reportNotificationResults`. Repeating a
+        `notification_id` is a no-op, so the Core API can safely retry.
+      tags: [Notifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationRequest" }
+      responses:
+        "202":
+          description: Accepted. Delivery happens after the response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notification_id]
+                properties:
+                  notification_id: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        A static token for each direction: the notifier sends `CORE_API_TOKEN` to the Core API,
+        and the Core API sends the notifier's `INBOUND_TOKEN`.
+
+  responses:
+    Unauthorized:
+      description: The bearer token is missing or wrong.
+
+  schemas:
+    Recipient:
+      description: One way to reach one team. The Core API sends one per contact method of every team.
+      type: object
+      required: [recipient_id, team_name, channel, address]
+      properties:
+        recipient_id: { type: string }
+        team_name: { type: string }
+        channel:
+          type: string
+          examples: [email, sms, ms_teams]
+        address:
+          type: string
+          description: "What the channel needs: an email address, a phone number, a webhook URL, ..."
+
+    NotificationRequest:
+      type: object
+      required: [notification_id, incident, claim_url, recipients]
+      properties:
+        notification_id:
+          type: string
+          description: Repeating an ID is a no-op, so the Core API can safely retry.
+        incident:
+          $ref: "../ingestion_worker/core_api.openapi.yaml#/components/schemas/Incident"
+        claim_url:
+          type: string
+          format: uri
+          description: The web app page where a team claims the incident.
+        recipients:
+          type: array
+          items: { $ref: "#/components/schemas/Recipient" }
+
+    DeliveryStatus:
+      type: string
+      enum: [delivered, failed]
+
+    DeliveryResult:
+      type: object
+      required: [recipient_id, status, attempts]
+      properties:
+        recipient_id: { type: string }
+        status: { $ref: "#/components/schemas/DeliveryStatus" }
+        attempts:
+          type: integer
+          minimum: 0
+          description: 0 when the notification service has no channel by that name.
+        error: { type: [string, "null"] }
+        delivered_at: { type: [string, "null"], format: date-time }
+
+    NotificationResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/DeliveryResult" }

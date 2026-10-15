@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from core_api_contract import IncidentCreate, MatchedDependency
 from ingestion_worker import config, core_api
 from ingestion_worker.matching import find_matches
+from ingestion_worker.models import IncidentCreate, MatchedDependency
 from ingestion_worker.sources.base import Source, SourceEvent
 
 log = logging.getLogger(__name__)

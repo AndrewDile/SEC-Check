@@ -1,9 +1,9 @@
-"""The Core API calls the notification service makes. Payloads are defined in core_api_contract.py."""
+"""The Core API calls the notification service makes. Payloads are in core_api.openapi.yaml."""
 
 import httpx
 
-from core_api_contract import DeliveryResult, NotificationResults
 from notification_service import config
+from notification_service.models import DeliveryResult, NotificationResults
 
 _http = httpx.Client(
     base_url=config.CORE_API_URL,
@@ -16,6 +16,6 @@ def report_results(notification_id: str, results: list[DeliveryResult]) -> None:
     """Tell the Core API which recipients were reached, for the audit trail."""
     body = NotificationResults(results=results)
     response = _http.post(
-        f"/v1/notifications/{notification_id}/results", json=body.model_dump(mode="json")
+        f"/notif/notifications/{notification_id}/results", json=body.model_dump(mode="json")
     )
     response.raise_for_status()
