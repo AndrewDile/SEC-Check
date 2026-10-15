@@ -6,8 +6,24 @@ services:
     ports:
       - "3001:3001"
 
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: seccheck
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db/migrations:/docker-entrypoint-initdb.d   # runs .sql on first start only
+      - db-data:/var/lib/mysql
+
   # Add your container here, e.g.
   # web:
   #   build: ./web
   #   ports:
   #     - "3000:3000"
+
+volumes:
+  db-data:
