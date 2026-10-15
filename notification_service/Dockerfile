@@ -1,6 +1,6 @@
 # Build from the repository root: docker build -f notification_service/Dockerfile .
 FROM python:3.13-slim
-COPY --from=ghcr.io/astral-sh/uv:0.10.7 /uv /bin/uv
+RUN pip install --no-cache-dir uv==0.10.7
 
 WORKDIR /app
 # Dependencies first, so that changing the code doesn't reinstall them.
