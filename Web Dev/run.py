@@ -1,12 +1,14 @@
-"""Start the SEC-Check Web App (and, by default, the mock Core API).
+"""Local development: start the SEC-Check Web App (from ../web_app) and, by default, the mock Core API.
 
     python run.py                         Web App on http://127.0.0.1:8000, mock Core API on :8001
     python run.py --core-url http://host:port
                                           Use a real Core API instead of the mock
     python run.py --port 9000 --mock-port 9001
 
-Settings come from config/settings.json and can be overridden by environment
-variables (see secheck_web/config.py) or the flags below.
+Settings come from "Web Dev/config/settings.json" and can be overridden by
+environment variables (see dev_settings.py and web_app/secheck_web/config.py)
+or the flags below. To run the Web App on its own (as in Docker), use
+"python -m secheck_web" in the web_app folder.
 """
 from __future__ import annotations
 
@@ -20,8 +22,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 if sys.version_info < (3, 9):
     sys.exit("Python 3.9 or newer is required.")
 
+import devpath  # noqa: E402,F401  (puts ../web_app on sys.path)
+from dev_settings import load_dev_settings  # noqa: E402
 from secheck_web.app import WebApp  # noqa: E402
-from secheck_web.config import load_settings  # noqa: E402
 from secheck_web.web import make_server, serve_in_thread  # noqa: E402
 from mock_core.server import MockCore  # noqa: E402
 
@@ -40,7 +43,7 @@ def main() -> None:
     parser.add_argument("--quiet", action="store_true", help="do not log each request")
     args = parser.parse_args()
 
-    settings = load_settings(args.settings, host=args.host, port=args.port, mock_core_port=args.mock_port)
+    settings = load_dev_settings(args.settings, host=args.host, port=args.port, mock_core_port=args.mock_port)
     if args.quiet:
         settings.log_requests = False
     start_mock = settings.start_mock_core and not args.no_mock and not args.core_url

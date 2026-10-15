@@ -2,7 +2,7 @@
 
 Every test request goes through the Web App over HTTP, exactly as the browser
 would. After each call the harness checks:
-  - the Web App response against the Web App contract (contracts/webapp_api.json)
+  - the Web App response against the Web App contract (web_app/contracts/webapp_api.json)
   - every request the Web App sent to the (mock) Core API against the Core
     contract (contracts/core_api.json); the mock also rejects invalid requests.
 """
@@ -19,9 +19,10 @@ from typing import Any, Dict, Optional, Tuple
 WEB_DEV = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(WEB_DEV))
 
+import devpath  # noqa: E402,F401  (the Web App code lives in ../web_app)
+from dev_settings import DevSettings  # noqa: E402
 from mock_core.server import EXTENSION_METHODS, MockCore  # noqa: E402
 from secheck_web.app import WebApp  # noqa: E402
-from secheck_web.config import Settings  # noqa: E402
 from secheck_web.validation import Spec  # noqa: E402
 from secheck_web.web import make_server, serve_in_thread  # noqa: E402
 
@@ -30,10 +31,11 @@ USERS = {"alice": ["CYBER1"], "bob": ["CYBER2"], "carol": ["LEGAL"], "dana": ["L
          "core-gateway": ["LEGAL", "CYBER1", "CYBER2"]}  # service user the mock Core API forwards as
 
 
-def make_settings(**overrides: Any) -> Settings:
-    values = dict(teams=TEAMS, users=USERS, decision_teams=[], log_requests=False, start_mock_core=False)
+def make_settings(**overrides: Any) -> DevSettings:
+    values = dict(teams=TEAMS, users=USERS, hidden_users=["core-gateway"], decision_teams=[],
+                  log_requests=False, start_mock_core=False)
     values.update(overrides)
-    return Settings(**values)
+    return DevSettings(**values)
 
 
 class Stack:

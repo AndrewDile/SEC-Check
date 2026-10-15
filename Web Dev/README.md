@@ -1,8 +1,14 @@
-# SEC-Check Web App
+# SEC-Check Web App: development and test harness
 
-The Web App component of SEC-Check: a browser front end plus a small backend that implements the Web App API (`../spec_docs/Web App API.txt`) and talks to the Core API. It needs **Python 3.9 or newer and nothing else**: no `pip install`, no Node, no database.
+This folder is the **test harness** for the Web App. The Web App itself is in `../web_app` and runs as its own container (see `../web_app/README.md`). This folder holds:
 
-## Run it
+- a **mock Core API**: an in-memory stand-in for the Core API that enforces the Core contract, with a gateway mode for system testing;
+- the **test suite** (`tests/`) and **tools** (contract sync, smoke test, test documentation);
+- **`run.py`**: runs the Web App from `../web_app` together with the mock, for local development.
+
+Like the Web App, it needs **Python 3.9 or newer and nothing else**. The harness finds the Web App code through `devpath.py`, which expects `web_app` next to `Web Dev`.
+
+## Run the Web App locally with the mock Core API
 
 ```
 run.bat                 (Windows)
@@ -12,10 +18,10 @@ python run.py           (any platform)
 
 Then open **http://localhost:8000/app/** and choose a user in the top bar.
 
-By default this also starts a **mock Core API** on port 8001, an in-memory stand-in for the real Core API that is wiped when you stop the server. To use a real Core API instead:
+This starts the Web App (code from `../web_app`) and a **mock Core API** on port 8001, which is wiped when you stop the server. To use a real Core API instead (e.g. the team's, from `../api`):
 
 ```
-python run.py --core-url http://<core-host>:<port>
+python run.py --core-url http://127.0.0.1:3001
 ```
 
 | Flag | Meaning |
@@ -29,17 +35,7 @@ python run.py --core-url http://<core-host>:<port>
 | `--open` | Open the app in your browser |
 | `--quiet` | Don't log every request |
 
-Other useful URLs:
-
-| URL | What |
-|---|---|
-| `/app/` | The web app |
-| `/docs` | Interactive API docs (Swagger UI; needs internet to load) |
-| `/openapi.json` | The Web App contract the server is running |
-| `/webapp/v1/health` | Is the server up, and can it reach the Core API? |
-| `http://localhost:8001/openapi.json` | The Core contract the mock enforces |
-
-The mock Core API can also run alone: `python -m mock_core --port 8001` (add `--webapp-url http://127.0.0.1:8000` for gateway mode).
+The mock Core API can also run alone: `python -m mock_core --port 8001` (add `--webapp-url http://127.0.0.1:8000` for gateway mode). Its contract is at `http://localhost:8001/openapi.json`.
 
 ## System testing through the Core API (gateway mode)
 
@@ -55,12 +51,12 @@ test client <--Core API response (Core format)-- mock Core API <------+
 - Calls **without** the `X-SECheck-Origin: webapp` header (test clients) are validated against the Core contract, translated to the matching Web App endpoint(s) (the section 2 mapping in the Web App spec, reversed), and the answer is converted back to the Core format. For example `/tickets NEW` becomes `POST /webapp/v1/incidents/{id}/tickets`, and `/incidents EDIT` with a new `Materiality` becomes `PUT /webapp/v1/incidents/{id}/decision` (optional `Rationale` field; a default note is used otherwise).
 - Calls **with** the header come from the Web App and are stored by the mock. The Web App's Core client always sends it, which prevents an endless loop.
 - `/reset` is always handled by the mock.
-- The mock signs in to the Web App as the service user `core-gateway` (settings: `mock_core_gateway_user`), so audit tickets read "... by core-gateway". It is hidden from the sign-in picker.
-- `--mock-local` (or `"mock_core_forwarding": false`) turns this off: the mock then answers test-client calls itself, as before.
+- The mock signs in to the Web App as the service user `core-gateway` (settings: `mock_core_gateway_user`), so audit tickets read "... by core-gateway". It is hidden from the sign-in picker (`hidden_users`).
+- `--mock-local` (or `"mock_core_forwarding": false`) turns this off: the mock then answers test-client calls itself.
 
 Translation code: `mock_core/gateway.py`. Tests: `tests/test_core_gateway.py`.
 
-The mock Core API's `/tickets GET` also accepts a version ID (`Ticket_type_strong`, e.g. `123_2_1`) and returns that exact version, the fix proposed for gap G-7. The Web App's full log (`GET /webapp/v1/incidents/{id}/log/entries`) uses it to show every entry's details, and falls back gracefully on a Core API without it (`MockCore(version_lookup=False)` simulates that).
+The mock's `/tickets GET` also accepts a version ID (`Ticket_type_strong`, e.g. `123_2_1`) and returns that exact version, the fix proposed for gap G-7. The Web App's full log (`GET /webapp/v1/incidents/{id}/log/entries`) uses it to show every entry's details, and falls back gracefully on a Core API without it (`MockCore(version_lookup=False)` simulates that).
 
 ## Test it
 
@@ -68,9 +64,9 @@ The mock Core API's `/tickets GET` also accepts a version ID (`Ticket_type_stron
 test.bat   /   ./test.sh   /   python -m unittest
 ```
 
-The tests start their own servers on free ports; nothing needs to be running. Each test goes through real HTTP and checks **both directions of the contract**:
+The tests start their own servers on free ports; nothing needs to be running. They test the Web App code in `../web_app`. Each test goes through real HTTP and checks **both directions of the contract**:
 
-- every Web App response must match `contracts/webapp_api.json`
+- every Web App response must match `../web_app/contracts/webapp_api.json`
 - every request the Web App sends to the Core API must match `contracts/core_api.json` (the mock also rejects anything that doesn't)
 
 Against running servers (the mock or a real Core API):
@@ -89,60 +85,45 @@ python tools/document_tests.py
 
 ## When a spec changes
 
-The OpenAPI specs are expected to change. The app is built so most changes need no code edits:
-
 1. Edit the spec document in the project's `spec_docs/` folder (`Web App API.txt` or `API Spec.txt`).
-2. Run `python tools/sync_contracts.py` (needs `pip install pyyaml`, used only by this tool). It regenerates `contracts/*.json` from the spec documents without modifying them.
+2. Run `python tools/sync_contracts.py` (needs `pip install pyyaml`, used only by this tool). It regenerates `../web_app/contracts/webapp_api.*` and `contracts/core_api.*` from the spec documents without modifying them.
 3. Run the tests. They tell you what, if anything, needs code.
 
 | Change in the spec | What happens |
 |---|---|
 | New/changed enum value, max length, pattern, required field | Validation follows automatically; front-end dropdowns read enums from `/openapi.json` |
-| New Web App operation | Server prints a warning and answers `501 NOT_IMPLEMENTED`; `test_every_spec_operation_has_a_handler` fails. Add a function with `@operation("<operationId>")` in `secheck_web/handlers/` |
+| New Web App operation | Server prints a warning and answers `501 NOT_IMPLEMENTED`; `test_every_spec_operation_has_a_handler` fails. Add a function with `@operation("<operationId>")` in `../web_app/secheck_web/handlers/` |
 | Removed or renamed operationId | Startup warning plus test failure listing the orphaned handler |
-| Core API field or path renamed | Edit `secheck_web/core_client.py`, **the only file that knows Core field names and paths** |
+| Core API field or path renamed | Edit `../web_app/secheck_web/core_client.py`, **the only file that knows Core field names and paths** |
 | Core request rules tightened | The mock rejects non-conforming requests, so tests fail where the Web App needs updating |
 
 ## Layout
 
 ```
 Web Dev/
-  run.py, run.bat, run.sh      start the app (+ mock Core API)
+  run.py, run.bat, run.sh      run the Web App (from ../web_app) + mock Core API locally
   test.bat, test.sh            run the tests
-  config/settings.json         ports, Core URL, teams, dev users, who may record decisions
-  contracts/                   OpenAPI contracts the app runs on (generated, don't hand-edit)
-  secheck_web/
-    app.py                     spec-driven routing, auth, validation, errors
-    core_client.py             Core API adapter (all Core paths and field names)
-    handlers/                  one function per operationId
-    audit.py                   wording of audit tickets (intake, edit, decision)
-    validation.py              JSON-schema subset validator used for both contracts
-    web.py                     tiny HTTP server on the standard library
-    static/                    the browser app (HTML, CSS, JS; no build step)
-      logo.png                 logo in the page footer + browser-tab icon (replace this file to update it)
+  devpath.py                   puts ../web_app on the import path
+  dev_settings.py              Web App settings + mock settings (DevSettings)
+  config/settings.json         settings for local development
+  contracts/core_api.*         Core API contract the mock and tests enforce (generated; don't hand-edit)
   mock_core/                   in-memory Core API that enforces the Core contract
     gateway.py                 forwards test-client Core API calls to the Web App (gateway mode)
-  tests/                       unittest suite
+  tests/                       unittest suite (+ current_tests.md)
   tools/sync_contracts.py      regenerate contracts from the spec documents
   tools/smoke_test.py          end-to-end check against running servers
-  Dockerfile                   optional container
+  tools/document_tests.py      regenerate tests/current_tests.md
 ```
 
 ## Settings
 
-`config/settings.json`, overridable with environment variables:
+`config/settings.json` holds the Web App's settings (see `../web_app/README.md`) plus these for the mock, each overridable with an environment variable:
 
 | Setting | Env var | Default |
 |---|---|---|
-| `host` / `port` | `SECHECK_HOST` / `SECHECK_PORT` | `127.0.0.1` / `8000` |
-| `core_api_url` | `CORE_API_URL` | `http://127.0.0.1:8001` |
-| `core_timeout_seconds` | `CORE_TIMEOUT_SECONDS` | `10` |
+| `core_api_url` | `CORE_API_URL` | `http://127.0.0.1:8001` (the mock) |
 | `start_mock_core` / `mock_core_port` | `SECHECK_START_MOCK_CORE` / `SECHECK_MOCK_CORE_PORT` | `true` / `8001` |
 | `mock_core_forwarding` | `SECHECK_MOCK_CORE_FORWARDING` | `true` (gateway mode) |
 | `mock_core_gateway_user` | n/a | `core-gateway` |
-| `teams` | `SECHECK_TEAMS` (JSON list) | `["LEGAL","CYBER1","CYBER2"]` |
-| `users` | n/a | 4 sample users and their teams |
-| `decision_teams` | n/a | `[]` = any signed-in user may record decisions |
-| `auth_mode` | `SECHECK_AUTH_MODE` | `dev` |
 
 **Sign-in is a development placeholder.** Users pick a name; the browser sends it as an `X-User` header (and a `secheck_session` cookie). There is no password. Keep `host` at `127.0.0.1` until real authentication is chosen.

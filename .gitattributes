@@ -1,0 +1,18 @@
+# Line endings for this repo. These rules override each person's own Git
+# setting (core.autocrlf), so the repo behaves the same on Windows, macOS and Linux.
+
+# Text files are stored with LF and checked out with LF on every platform.
+* text=auto eol=lf
+
+# Windows batch files need CRLF line endings.
+*.bat text eol=crlf
+
+# Specification documents and personal notes are kept byte-for-byte as written
+# (no line-ending conversion), so Git never changes them.
+spec_docs/** -text
+Notes.txt -text
+
+# Binary files: never convert or diff as text.
+*.png binary
+*.jpg binary
+*.ico binary

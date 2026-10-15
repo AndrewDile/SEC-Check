@@ -1,13 +1,13 @@
 """Run the mock Core API on its own:  python -m mock_core [--host 127.0.0.1] [--port 8001]"""
 import argparse
 
-from secheck_web.config import load_settings
+from mock_core.server import MockCore  # importing mock_core first sets up the path to ../web_app
+from dev_settings import load_dev_settings
 from secheck_web.web import make_server
-from mock_core.server import MockCore
 
 
 def main() -> None:
-    settings = load_settings()
+    settings = load_dev_settings()
     parser = argparse.ArgumentParser(description="Mock Core API for SEC-Check")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=settings.mock_core_port)

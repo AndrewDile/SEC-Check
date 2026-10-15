@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import WEB_DEV, make_settings
+from devpath import WEB_APP
 from secheck_web import core_client
 from secheck_web.app import WebApp
 from secheck_web.validation import Spec
@@ -52,16 +53,15 @@ class ContractFreshnessTests(unittest.TestCase):
         if not webapp_txt.exists() or not core_txt.exists():
             self.skipTest(f"spec documents not found in {SPEC_DOCS}")
         with tempfile.TemporaryDirectory() as tmp:
-            # Run the sync tool against a copy so the real contracts are untouched.
-            tool = (WEB_DEV / "tools" / "sync_contracts.py").read_text(encoding="utf-8")
-            tool = tool.replace('CONTRACTS = WEB_DEV / "contracts"', f"CONTRACTS = Path({tmp!r})")
-            script = Path(tmp) / "sync.py"
-            script.write_text(tool.replace("WEB_DEV = Path(__file__).resolve().parent.parent", f"WEB_DEV = Path({str(WEB_DEV)!r})"), encoding="utf-8")
-            subprocess.run([sys.executable, str(script)], check=True, capture_output=True)
-            for name in ("webapp_api.json", "core_api.json"):
+            # Run the sync tool into a temporary folder so the real contracts are untouched.
+            subprocess.run([sys.executable, str(WEB_DEV / "tools" / "sync_contracts.py"),
+                            "--webapp-out", tmp, "--core-out", tmp], check=True, capture_output=True)
+            current_files = {"webapp_api.json": WEB_APP / "contracts" / "webapp_api.json",
+                             "core_api.json": WEB_DEV / "contracts" / "core_api.json"}
+            for name, current_path in current_files.items():
                 fresh = json.loads((Path(tmp) / name).read_text(encoding="utf-8"))
-                current = json.loads((WEB_DEV / "contracts" / name).read_text(encoding="utf-8"))
-                self.assertEqual(fresh, current, f"contracts/{name} is out of date: run python tools/sync_contracts.py")
+                current = json.loads(current_path.read_text(encoding="utf-8"))
+                self.assertEqual(fresh, current, f"{current_path} is out of date: run python tools/sync_contracts.py")
 
 
 if __name__ == "__main__":

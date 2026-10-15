@@ -6126,5 +6126,5 @@ No HTTP requests: this test inspects the code and contract files directly.
 Assertions:
 
 ```python
-self.assertEqual(fresh, current, f"contracts/{name} is out of date: run python tools/sync_contracts.py")
+self.assertEqual(fresh, current, f"{current_path} is out of date: run python tools/sync_contracts.py")
 ```

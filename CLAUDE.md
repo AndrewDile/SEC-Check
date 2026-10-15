@@ -97,17 +97,19 @@ Section 7 of `spec_docs/Web App API.txt` lists G-1 to G-12. The most important:
 
 When the Core API spec is updated, re-check these gaps and update the Web App spec.
 
-## Web App implementation (`Web Dev/`)
+## Web App implementation (`web_app/`) and test harness (`Web Dev/`)
 
-First version documented in `initial_implementation.md`; run/test/change guide in `Web Dev/README.md`.
+History and decisions: `initial_implementation.md`. Guides: `web_app/README.md` (the app, Docker) and `Web Dev/README.md` (harness, tests).
 
-- Python 3.9+ standard library only (no pip installs). Start: `python run.py` in `Web Dev/` -> http://localhost:8000/app/ plus a mock Core API on :8001. Real Core API: `--core-url URL`.
-- Tests: `python -m unittest` in `Web Dev/`. They check Web App responses against `contracts/webapp_api.json` and every Core request against `contracts/core_api.json`.
-- Spec-driven: routes and validation come from `contracts/webapp_api.json`; handlers are registered by `operationId` in `secheck_web/handlers/`. After a spec change run `python tools/sync_contracts.py` (needs PyYAML; reads from `spec_docs/`), then the tests.
-- `secheck_web/core_client.py` is the ONLY place that knows Core API paths and field names.
+- **`web_app/`** is the Web App, deployed as its own Docker container (`web` service in `docker-compose.yml`, port 8000, `CORE_API_URL=http://api:3001`). Python 3.9+ standard library only. Entry point: `python -m secheck_web`. It must not depend on anything in `Web Dev/`.
+- **`Web Dev/`** is the test harness: mock Core API (`mock_core/`), tests, tools, and `run.py` for local dev (Web App from `../web_app` + mock Core API on :8001 -> http://localhost:8000/app/; real Core API: `--core-url URL`). It imports the app via `devpath.py`; mock-only settings live in `dev_settings.py` (`DevSettings`).
+- Tests: `python -m unittest` in `Web Dev/`. They check Web App responses against `web_app/contracts/webapp_api.json` and every Core request against `Web Dev/contracts/core_api.json`.
+- Spec-driven: routes and validation come from `web_app/contracts/webapp_api.json`; handlers are registered by `operationId` in `web_app/secheck_web/handlers/`. After a spec change run `python tools/sync_contracts.py` in `Web Dev/` (needs PyYAML; reads `spec_docs/`, writes both contract folders), then the tests.
+- `web_app/secheck_web/core_client.py` is the ONLY place that knows Core API paths and field names.
+- The team's real Core API is in `api/` (TypeScript/Express, port 3001). As of this writing its operations are stubs that return `501 NOT_IMPLEMENTED`.
 - Extensions not yet in the spec: `GET /session`, `GET /dev/users`, `GET /health`, `GET /dependencies` (list), `GET /incidents/{id}/log/entries` (every log entry with details; fetches each version from Core `/tickets GET` by Ticket_type_strong, the gap G-7 fix, with a fallback). Core `Method: "LIST"` is a proposed extension (gap G-5), supported by the mock only.
-- Sign-in is a dev placeholder (X-User header / `secheck_session` cookie). Keep the server bound to 127.0.0.1.
-- **Gateway mode** (default under `run.py`): Core API calls from test clients are forwarded by the mock Core API to the Web App as Web App API requests (`mock_core/gateway.py`). The Web App marks its own Core calls with `X-SECheck-Origin: webapp` so they are stored, not forwarded (prevents a loop). Service user `core-gateway`. `--mock-local` turns it off.
+- Sign-in is a dev placeholder (X-User header / `secheck_session` cookie). Locally keep the server bound to 127.0.0.1; don't expose the container publicly until real auth exists.
+- **Gateway mode** (default under `run.py`): Core API calls from test clients are forwarded by the mock Core API to the Web App as Web App API requests (`Web Dev/mock_core/gateway.py`). The Web App marks its own Core calls with `X-SECheck-Origin: webapp` so they are stored, not forwarded (prevents a loop). Service user `core-gateway`. `--mock-local` turns it off.
 - `tests/current_tests.md` documents every test as HTTP requests and expected responses; regenerate with `python tools/document_tests.py`.
 
 ## Repo layout
@@ -123,7 +125,10 @@ SEC-Check/
   data_schema_md/               Markdown copies of the specs (derived)
     API Spec.md                 from spec_docs/API Spec.txt
     Web App API.md              from spec_docs/Web App API.txt
-  Web Dev/                      Web App implementation (see its README.md)
+  web_app/                      Web App: its own Docker container (see its README.md)
+  Web Dev/                      Test harness: mock Core API, tests, tools, local run.py (see its README.md)
+  api/                          Core API (team-owned, TypeScript; its own container)
+  docker-compose.yml            api + web services
   initial_implementation.md     What the first implementation added and why
   README.md
   CLAUDE.md

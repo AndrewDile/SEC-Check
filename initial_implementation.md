@@ -202,3 +202,23 @@ The full log on an incident page used to list only version IDs (`<incident>_<tic
 
 An incident description (or ticket text) containing a long unbroken string, such as a URL, hash or pasted log line, ran off the right edge of "What happened", ticket entries, the 8-K view and the full log. On phones it widened the whole page to about 3,200px. Fixed in `secheck_web/static/styles.css`: text in the page body may break inside long strings, but in tables only the description columns do, so IDs, severity and teams keep whole words. The phone layout's columns can no longer be stretched by their content. Checked in a headless browser at desktop and phone widths on the incident list, the incident page, the 8-K view and the full log, with no horizontal overflow.
 
+### Web App split into its own container (`web_app/`)
+
+The Web App now lives in its own folder, **`web_app/`**, and builds into its own Docker container, separate from the test harness. It slots into the team's `docker-compose.yml` next to the Core API (`api/`).
+
+- **`web_app/`** holds only what the running app needs: the server code (`secheck_web/`, moved from `Web Dev/`), the Web App contract (`contracts/webapp_api.*`), its settings (`config/settings.json`), a `Dockerfile`, a `.dockerignore` and a README. It has no dependency on the test harness, and no Python packages to install.
+  - Entry point: `python -m secheck_web` (new `secheck_web/__main__.py`), which serves the Web App only.
+  - `Dockerfile`: `python:3.12-slim`, copies only the three folders above, runs as a non-root user, listens on `0.0.0.0:8000`, reads `CORE_API_URL` (default `http://api:3001`), and has a `HEALTHCHECK` on `/webapp/v1/health`.
+- **`docker-compose.yml`**: the placeholder is filled with a `web` service: built from `./web_app`, port `8000:8000`, `CORE_API_URL: http://api:3001`, starting after `api`.
+- **`Web Dev/` is now the test harness**: the mock Core API, the tests, the tools, and `run.py` for local development. It imports the Web App from `../web_app` through the new `devpath.py`, so there is one copy of the app code. Removed from `Web Dev/`: `secheck_web/`, `contracts/webapp_api.*` and the old `Dockerfile`, since the Core API now has its own container.
+- **Settings split.** The Web App's `Settings` no longer knows about the mock. The mock-only settings (`start_mock_core`, `mock_core_port`, `mock_core_forwarding`, `mock_core_gateway_user`, `core_contract`) moved to `DevSettings` in `Web Dev/dev_settings.py`. The Web App's sign-in picker now hides users listed in a general `hidden_users` setting (`["core-gateway"]`) instead of reading the mock's setting. New environment variables for the container: `SECHECK_USERS`, `SECHECK_DECISION_TEAMS` and `SECHECK_LOG_REQUESTS`. The default Core URL for the Web App on its own is now `http://127.0.0.1:3001`, the team Core API's port; local development through `run.py` still uses the mock on 8001.
+- **Health check fix.** The team's Core API currently answers every operation with `501 NOT_IMPLEMENTED`. `/webapp/v1/health` used to report that as "not reachable". Any error reply from the Core API now counts as reachable; only no answer or a timeout counts as unreachable.
+- **Contract sync.** `tools/sync_contracts.py` now writes the Web App contract to `web_app/contracts/` and the Core contract to `Web Dev/contracts/`, with `--webapp-out` / `--core-out` to override. The freshness test uses those options instead of patching the script.
+- **Verified.** All 84 tests pass against the code in `web_app/`. Copying only the files the `Dockerfile` copies into an empty folder, then starting it with the container's environment and command, worked as follows:
+  - the app served the page;
+  - the `Dockerfile`'s health-check command passed;
+  - against a stand-in for the team's Core API (501 on every operation), the health check reported "reachable, NOT_IMPLEMENTED" and errors passed through to the browser;
+  - `core-gateway` stayed hidden from the sign-in picker.
+
+  `run.py`, `python -m mock_core` and the smoke test all still work. **Not verified:** an actual `docker build`, because no Docker engine was available while making this change. Run `docker compose up --build` to check it.
+

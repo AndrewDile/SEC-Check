@@ -1,5 +1,5 @@
 {
-  "_comment": "Web App settings. Environment variables override these (see secheck_web/config.py). Users/auth are a development placeholder until the team picks an auth method (gap G-6). core-gateway is the service user the mock Core API signs in as when it forwards Core API calls to the Web App; it is hidden from the sign-in picker.",
+  "_comment": "Settings for local development with the test harness (run.py): the Web App's settings plus the mock Core API's (mock_*). The Web App container uses web_app/config/settings.json instead. Environment variables override these (see dev_settings.py). Users/auth are a development placeholder (gap G-6). core-gateway is the service user the mock Core API signs in as when it forwards Core API calls to the Web App; it is hidden from the sign-in picker.",
   "host": "127.0.0.1",
   "port": 8000,
   "core_api_url": "http://127.0.0.1:8001",
@@ -9,14 +9,34 @@
   "mock_core_port": 8001,
   "mock_core_forwarding": true,
   "mock_core_gateway_user": "core-gateway",
-  "teams": ["LEGAL", "CYBER1", "CYBER2"],
+  "teams": [
+    "LEGAL",
+    "CYBER1",
+    "CYBER2"
+  ],
   "users": {
-    "alice": ["CYBER1"],
-    "bob": ["CYBER2"],
-    "carol": ["LEGAL"],
-    "dana": ["LEGAL", "CYBER1"],
-    "core-gateway": ["LEGAL", "CYBER1", "CYBER2"]
+    "alice": [
+      "CYBER1"
+    ],
+    "bob": [
+      "CYBER2"
+    ],
+    "carol": [
+      "LEGAL"
+    ],
+    "dana": [
+      "LEGAL",
+      "CYBER1"
+    ],
+    "core-gateway": [
+      "LEGAL",
+      "CYBER1",
+      "CYBER2"
+    ]
   },
+  "hidden_users": [
+    "core-gateway"
+  ],
   "decision_teams": [],
   "auth_mode": "dev",
   "log_requests": true

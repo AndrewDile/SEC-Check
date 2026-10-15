@@ -21,7 +21,7 @@ def session(ctx: Context, req: Request) -> Dict[str, Any]:
 def dev_users(ctx: Context, req: Request) -> Dict[str, Any]:
     if ctx.settings.auth_mode != "dev":
         raise WebAppError("NOT_FOUND", "Not available.")
-    hidden = {ctx.settings.mock_core_gateway_user}  # service account, not a person
+    hidden = set(ctx.settings.hidden_users)  # service accounts, e.g. the Core API gateway user
     return {"Users": [{"User": name, "Teams": teams} for name, teams in ctx.settings.users.items() if name not in hidden]}
 
 
@@ -31,5 +31,7 @@ def health(ctx: Context, req: Request) -> Dict[str, Any]:
         ctx.core.dp_match(None, "__healthcheck__")
         core_ok, detail = True, "reachable"
     except WebAppError as exc:
-        core_ok, detail = exc.error in ("DP_DNE", "INVALID_DATA"), f"{exc.error}: {exc.message}"
+        # Any Core API error reply (even NOT_IMPLEMENTED from an unfinished Core API) means it answered.
+        core_ok = exc.error not in ("UPSTREAM_UNAVAILABLE", "TIMEOUT")
+        detail = f"{exc.error}: {exc.message}"
     return {"Status": "OK", "Core_API_URL": ctx.core.base_url, "Core_API_Reachable": core_ok, "Core_API_Detail": detail}

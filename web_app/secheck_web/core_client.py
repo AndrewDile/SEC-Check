@@ -33,7 +33,7 @@ PATH_DEPENDENCIES = "/dependencies"
 
 # Every call the Web App makes carries this header so a Core API that forwards
 # external calls to the Web App (gateway mode) does not forward these back,
-# which would loop forever. See mock_core/gateway.py.
+# which would loop forever. See "Web Dev/mock_core/gateway.py".
 ORIGIN_HEADER = "X-SECheck-Origin"
 ORIGIN_WEBAPP = "webapp"
 

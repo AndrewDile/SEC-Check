@@ -3,4 +3,5 @@ Different Permission levels (Based on teams?)
 Core API needs to take in API spec, understand web app/ database / ingest worker API, convert Core schema to different schemas -> receive requests from different schemas and turn into Core schema or other communication schema.
 Ability to create own team names
 Core API edit - Needs ability to request strong ticket type from database for log purposes
+Core API edit - Needs ability to create different teams
 Each system is separate container (Docker)

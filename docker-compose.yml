@@ -6,8 +6,12 @@ services:
     ports:
       - "3001:3001"
 
-  # Add your container here, e.g.
-  # web:
-  #   build: ./web
-  #   ports:
-  #     - "3000:3000"
+  web_app:
+    build: ./web_app
+    environment:
+      CORE_API_URL: http://api:3001
+    ports:
+      - "8000:8000"
+    depends_on:
+      - api
+
