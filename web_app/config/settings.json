@@ -1,0 +1,20 @@
+{
+  "_comment": "Web App settings. Environment variables override these (see secheck_web/config.py); in Docker, set CORE_API_URL etc. in docker-compose.yml. Users/auth are a development placeholder until the team picks an auth method (gap G-6). core-gateway is the service user a Core API signs in as when it forwards calls to the Web App; it is hidden from the sign-in picker.",
+  "host": "127.0.0.1",
+  "port": 8000,
+  "core_api_url": "http://127.0.0.1:3001",
+  "core_timeout_seconds": 10,
+  "core_use_system_proxy": false,
+  "teams": ["LEGAL", "CYBER1", "CYBER2"],
+  "users": {
+    "alice": ["CYBER1"],
+    "bob": ["CYBER2"],
+    "carol": ["LEGAL"],
+    "dana": ["LEGAL", "CYBER1"],
+    "core-gateway": ["LEGAL", "CYBER1", "CYBER2"]
+  },
+  "hidden_users": ["core-gateway"],
+  "decision_teams": [],
+  "auth_mode": "dev",
+  "log_requests": true
+}

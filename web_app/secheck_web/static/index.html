@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SEC-Check</title>
+  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/incidents">SEC-Check</a>
+    <nav class="nav" aria-label="Main">
+      <a href="#/incidents" data-nav="incidents">Incidents</a>
+      <a href="#/queue" data-nav="queue">Team queue</a>
+      <a href="#/dependencies" data-nav="dependencies">Dependencies</a>
+    </nav>
+    <label class="signin">
+      <span class="signin-label">Signed in as</span>
+      <select id="user-select" aria-label="Signed-in user"></select>
+    </label>
+  </header>
+  <div id="notice" class="notice" role="status" aria-live="polite" tabindex="-1" hidden></div>
+  <main id="main" class="main"></main>
+  <footer class="footer">
+    <span id="core-status">Checking Core API…</span>
+    <a href="/docs">API docs</a>
+    <img class="footer-logo" src="logo.png" alt="SEC-Check logo" width="86" height="96">
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

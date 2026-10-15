@@ -19,11 +19,14 @@ services:
       - ./db/migrations:/docker-entrypoint-initdb.d   # runs .sql on first start only
       - db-data:/var/lib/mysql
 
-  # Add your container here, e.g.
-  # web:
-  #   build: ./web
-  #   ports:
-  #     - "3000:3000"
+  web_app:
+    build: ./web_app
+    environment:
+      CORE_API_URL: http://api:3001
+    ports:
+      - "8000:8000"
+    depends_on:
+      - api
 
 volumes:
   db-data:
