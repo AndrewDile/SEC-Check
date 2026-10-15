@@ -1,0 +1,445 @@
+Data schemas and examples
+Defines the fields, types, required/optional status, and allowed values or constraints for the inputs and outputs. Specify units and formats where relevant. Include at least one valid request/response example for each core operation and one invalid-input example with its expected error. Cross-reference definitions in the contract rather than duplicating them.
+
+Path Type:
+	Input:
+	Field:
+		Required
+		Type
+			default
+			constraints
+Output Accept:
+Output Error:
+
+Types Come from Contract
+
+Incident Creation Path: 
+	Input:
+		Incident_ID (UUID):
+			Required
+			Integer
+				constraints - 
+case(method): 
+NEW -> UUID DNE
+EDIT -> UUID exists
+GET  -> UUID exists
+		Method:
+			Required
+			Method_IC_type
+				constraints - type_enum
+		Timestamp:
+			Required
+			timestamp
+				constraints - Not future
+		Description:
+			Required
+			string
+				constraints - < 5000 chars
+		Dependency_Name:
+			Optional
+			string
+		Materiality:
+			Optional
+			Materiality_type
+			default - UNDECIDED
+			constraints - type_enum
+	Severity:
+		Optional
+		Severity_type
+			default - UNDECIDED
+			constraints - type_enum
+	Urgency:
+		Optional
+		Urgency_type:
+			default - UNDECIDED
+			constraints - type_enum
+	Output Accept:
+		Incident_ID (UUID):
+			Integer
+		Status:
+			String
+			Response -
+			case(method): 
+NEW -> “Created”
+EDIT -> “Edited”
+GET  -> “Data Fetched”
+		If method is GET:
+			Show stored Description, Dependency, Materiality, Severity, Urgency
+	Output Error:
+		Error:
+			Error_type
+		Message:
+			String
+			Response - 
+				Depends on error type
+Incident ticket path:
+	Input:
+		Incident_ID (UUID):
+			Required
+			Integer
+UUID exists
+		Method:
+			Required
+			Method_IC_type
+				constraints - type_enum
+		Timestamp:
+			Required
+			timestamp
+				constraints - Not future
+		Description:
+			Required if method = NEW or method = EDIT
+			string
+				constraints - < 5000 chars
+		Ticket_number:
+			Required if method = GET
+			ticket_type_weak
+		Ticket_severity:
+			Optional
+			Severity_type
+		Ticket_urgency:
+			Optional
+			Urgency_type
+		Ticket_Claim:
+			Optional
+			Ticket_claim_type
+		Team_list:
+			Optional
+			List of team_type
+				constraints - type enum
+	Output Accept:
+		Incident_ID (UUID):
+			Integer
+		Ticket_ID:
+			Ticket_type_strong
+		Status:
+			String
+			Response - 
+case(method):
+NEW: “Logged”
+GET: “Displayed”
+		If method = Get:
+UUID_Description, Ticket_Description, Materiality_type, uuid_severity, uuid_urgency, ticket_severity, ticket_urgency, Ticket_Claim, Team_List
+
+	Output Error:
+		Error:
+			Error_type
+		Message:
+			String
+			Response - 
+				Depends on error type
+Notifier Path:
+	Input:
+		Team_Names:
+			Required
+			List of team_type
+		Method:
+			required
+			Method_note_type
+		Ticket_Number:
+			Required
+			Ticket_type_weak
+	Output Accept:
+		UUID:
+			integer
+		Ticket_Number:
+			Ticket_type_weak
+		Status:
+			String
+			Response:
+				Method = “CLAIM”: “Claimed ticket”
+				Method = “NOTIFY”: “Notified team”
+	Output Error:
+		Error:
+			Error_type
+		Message:
+			String
+			Response - 
+				Depends on error type
+Request Log Path:
+	Input:
+		Incident_ID (UUID):
+			Required
+			Integer
+UUID exists
+		Timestamp:
+			Required
+			timestamp
+				constraints - Not future
+	Output Accept:
+		Incident_ID (UUID):
+			Integer
+		Description:
+			string
+				constraints - < 5000 chars
+		Materiality_type:
+			Materiality_type
+			constraints - type_enum
+	Severity:
+		Severity_type
+			constraints - type_enum
+	Urgency:
+		Urgency_type:
+			constraints - type_enum
+		Ticket_ID_List:
+			List of Ticket_type_strong
+		Status:
+			String
+			Response - “Log Retrieved”
+	Output Error:
+		Error:
+			Error_type
+		Message:
+			String
+			Response - 
+				Depends on error type
+Dependency Control Path:
+	Input:
+	dp_name:
+		string
+		constraints:
+			case(method):
+				NEW: dp_name DNE
+				MATCH: dp_name exists
+				REMOVE: dp_name exists
+	method:
+		method_dp_type
+Output Accept:
+	dp_name:
+		string
+	status:
+		string
+		Response - 
+			method = NEW: “Added”
+			method = MATCH:
+ “Exists” or “Does not Exist”
+			method = REMOVE: “Removed”
+	Output Error:
+		Error:
+			Error_type
+		Message:
+			String
+			Response - 
+				Depends on error type
+Database Control Path:
+(For testing API only)
+	Input:
+		method:
+			method_db_type
+	Output Accept:
+		status:
+			string
+			response -
+				method = RESET: “DB Wiped”
+	Output Error:
+		Error:
+			Error_type
+		Message:
+			String
+			Response - 
+				Depends on error type
+
+
+All examples:
+/incidents:
+
+Input OK:
+{
+  "Incident_ID": "102356304331",
+  "Method": "NEW",
+  "Timestamp": "2026-09-25T20:00:00Z",
+  "Description": "Critical API gateway timeout linked to third-party auth provider.",
+  "Materiality": "MATERIAL",
+  "Severity": "HIGH",
+  "Urgency": "URGENT"
+}
+
+
+Output 200 OK:
+{
+  "Incident_ID": "102356304331",
+  "Status": "Created",
+  "Description": "Critical API gateway timeout linked to third-party auth provider.",
+  "Materiality": "MATERIAL",
+  "Severity": "HIGH",
+  "Urgency": "URGENT"
+}
+
+Input Bad: (After inputting same ID)
+{
+  "Incident_ID": "102356304331",
+  "Method": "NEW",
+  "Timestamp": "2026-09-25T20:00:00Z",
+  "Description": "Critical API gateway timeout linked to third-party auth provider.",
+  "Materiality": "MATERIAL",
+  "Severity": "HIGH",
+  "Urgency": "URGENT"
+}
+
+Output 400 Bad Request:
+{
+  "Error": "UUID_EXISTS",
+  "Message": "The provided Incident_ID already exists in the system."
+}
+
+
+/tickets:
+
+Input OK:
+{
+  "Incident_ID": 102356304331",
+  "Method": "NEW",
+  "Timestamp": "2026-09-25T20:10:00Z",
+  "Description": "Initial triage ticket logged for authentication failure.",
+  "Ticket_severity": "HIGH",
+  "Ticket_urgency": "URGENT",
+  "Team_list": ["CYBER1", "LEGAL"]
+}
+
+
+
+Output 200 OK:
+{
+  "Incident_ID": "102356304331",
+  "Ticket_ID": "102356304331_1",
+  "Status": "Logged",
+  "UUID_Description": "Critical API gateway timeout linked to third-party auth provider.",
+  "Ticket_Description": "Initial triage ticket logged for authentication failure.",
+  "Materiality_type": "MATERIAL",
+  "uuid_severity": "HIGH",
+  "uuid_urgency": "URGENT",
+  "ticket_severity": "HIGH",
+  "ticket_urgency": "URGENT",
+  "Team_List": ["CYBER1", "LEGAL"]
+}
+
+
+Input Bad:
+{
+  "Incident_ID": 000000000001",
+  "Method": "GET",
+  "Timestamp": "2026-09-25T20:10:00Z",
+  "Description": "Initial triage ticket logged for authentication failure.",
+  "Ticket_severity": "HIGH",
+  "Ticket_urgency": "URGENT",
+  "Team_list": ["CYBER1", "LEGAL"]
+}
+
+
+Output 400 Bad Request:
+{
+  "Error": "UUID_DNE",
+  "Message": "The specified Incident_ID does not exist."
+}
+
+
+/notifier:
+
+Input OK:
+{
+  "Team_Names": ["CYBER1"],
+  "Method": "CLAIM",
+  "Ticket_Number": "10367_1"
+}
+
+
+Output 200 OK:
+{
+  "UUID": 10367,
+  "Ticket_Number": "10367_1",
+  "Status": "Claimed ticket"
+}
+
+Input Bad:
+{
+  "Team_Names": [],
+  "Method": "CLAIM",
+  "Ticket_Number": "10367_1"
+}
+
+Output 400 Bad Request:
+{
+  "Error": "INVALID_DATA",
+  "Message": "Team_Names invalid data type”
+}
+
+
+/logs:
+
+Input OK:
+{
+  "Incident_ID": "188948234932",
+  "Timestamp": "2026-09-25T20:30:00Z"
+}
+
+Output 200 OK:
+{
+  "Incident_ID": "188948234932",
+  "Description": "Critical API gateway timeout linked to third-party auth provider.",
+  "Materiality_type": "MATERIAL",
+  "Severity": "HIGH",
+  "Urgency": "URGENT",
+  "Ticket_ID_List": ["188948234932_1_1, 188948234932_2_1, 188948234932_1_2"],
+  "Status": "Log Retrieved"
+}
+
+Input Bad:
+{
+  "Incident_ID": "188948234932",
+  "Timestamp": "2027-09-25T20:30:00Z"
+}
+
+Output 400 Bad Request:
+{
+  "Error": "INVALID_DATA",
+  "Message": "Timestamp cannot be set in the future."
+}
+
+/dependancies:
+
+Input OK:
+{
+  "dp_name": "auth-service-v2",
+  "method": "NEW"
+}
+
+
+Output 200 OK:
+{
+  "dp_name": "auth-service-v2",
+  "status": "Added"
+}
+
+Input Bad: (If dependency already added)
+{
+  "dp_name": "auth-service-v2",
+  "method": "NEW"
+}
+
+Output 400 Bad Request:
+{
+  "Error": "DP_EXISTS",
+  "Message": "The dependency name already exists in the system."
+}
+
+/reset:
+
+Input OK:
+	{
+  "method": "RESET"
+}
+
+Output 200 OK:
+{
+  "status": "DB Wiped"
+}
+
+Input Bad:
+	{
+  "method": "PUPPY"
+}
+
+Output 400 Bad Request:
+{
+  "Error": "INVALID_DATA",
+  "Message": "Method set to invalid data type"
+}

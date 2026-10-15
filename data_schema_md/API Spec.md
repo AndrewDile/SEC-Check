@@ -1,0 +1,393 @@
+# API Spec
+
+> Markdown version of `API Spec.txt`. The `.txt` file is the source; this copy keeps its wording unchanged.
+
+This is the working API spec derived from the "Data Schema & Examples" file
+
+## Operations in Specification
+
+### `/incidents`
+
+Requests the creation, update, or data related to a specific overall cybersecurity incident
+
+**Requirement ID:** REQ-01
+
+### `/tickets`
+
+Requests the creation, update or data related to a specific ticket. A ticket can be updated in which case a new up to date ticket will be formed, but the old ticket still remains in the log pertaining to that cybersecurity incident
+
+**Requirement ID:** REQ-02, REQ-03
+
+### `/notifier`
+
+Sends notification to teams about specified updated ticket and allows teams to claim tickets they are notified about
+
+**Requirement ID:** REQ-04
+
+### `/logs`
+
+Requests the logs associated with a cybersecurity incident, the response to which should be a list of all tickets related to the incident
+
+**Requirement ID:** REQ-06
+
+### `/dependancies`
+
+Requests the creation, removal, or whether a dependency exists for a new dependency
+
+**Requirement ID:** REQ-05
+
+### `/reset`
+
+Wipes everything in database
+
+## Types
+
+- **Method_IC_type:** {NEW, EDIT, GET}
+- **Method_dp_type:** {NEW, MATCH, REMOVE}
+- **Method_note_type:** {CLAIM, NOTIFY}
+- **Method_db_type:** {RESET}
+- **Materiality_type:** {MATERIAL, IMMATERIAL, UNDECIDED}
+- **Severity_type:** {HIGH, MEDIUM, LOW, UNDECIDED, RESOLVED}
+- **Urgency_type:** {URGENT, NOT_URGENT, UNDECIDED, RESOLVED}
+- **Error_type:** {UUID_EXISTS, UUID_DNE, INVALID_DATA, DP_EXISTS, DP_DNE, TIMEOUT}
+- **Ticket_type_weak:** string - valid UUID + ‘’ + number increment
+- **Ticket_type_strong:** string - valid UUID + ‘’ + number increment + ‘_’ + version_num (new version_num each time UUID or ticket edited)
+- **Ticket_claim_type:** {CLAIMED, UNCLAIMED}
+- **Team_type:** user defined by number of teams Ex. {LEGAL, CYBER1, CYBER2}
+
+## HTTP Structured Spec
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Incident and Dependency Platform Cross-Team Testing API
+  version: 1.0.0
+  description: OpenAPI specification covering all operations defined in the system data schema for cross-team testing.
+servers:
+  - url:
+paths:
+  /incidents:
+    post:
+      summary: Incident Creation Path
+      description: Handles creating, editing, or fetching incident details.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - Incident_ID
+                - Method
+                - Timestamp
+                - Description
+              properties:
+                Incident_ID:
+                  type: string
+                  format: uuid
+                  description: "Constraints depend on method: NEW (must not exist), EDIT/GET (must exist)."
+                Method:
+                  type: string
+                  enum: [NEW, EDIT, GET]
+                Timestamp:
+                  type: string
+                  format: date-time
+                  description: Must not be in the future.
+                Description:
+                  type: string
+                  maxLength: 5000
+	    Dependency:
+	      type: string
+                Materiality:
+                  type: string
+                  enum: [MATERIAL, IMMATERIAL, UNDECIDED]
+                  default: UNDECIDED
+                Severity:
+                  type: string
+                  enum: [HIGH, MEDIUM, LOW, UNDECIDED, RESOLVED]
+                  default: UNDECIDED
+                Urgency:
+                  type: string
+                  enum: [URGENT, NOT_URGENT, UNDECIDED, RESOLVED]
+                  default: UNDECIDED
+      responses:
+        '200':
+          description: Successful response for EDIT, GET, or NEW operations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Incident_ID:
+                    type: string
+                    format: uuid
+                  Status:
+                    type: string
+                    example: "Created"
+                  Description:
+                    type: string
+                  Materiality:
+                    type: string
+                  Severity:
+                    type: string
+                  Urgency:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /tickets:
+    post:
+      summary: Incident Ticket Path
+      description: Manages incident ticket logging, tracking, and strong version increments.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - Incident_ID
+                - Method
+                - Timestamp
+              properties:
+                Incident_ID:
+                  type: string
+                  format: uuid
+                  description: Must exist.
+                Method:
+                  type: string
+                  enum: [NEW, EDIT, GET]
+                Timestamp:
+                  type: string
+                  format: date-time
+                  description: Must not be in the future.
+                Description:
+                  type: string
+                  maxLength: 5000
+                  description: Required if method = NEW or method = EDIT.
+                Ticket_number:
+                  type: string
+                  description: Required if method = GET (ticket_type_weak format).
+                Ticket_severity:
+                  type: string
+                  enum: [HIGH, MEDIUM, LOW, UNDECIDED, RESOLVED]
+                Ticket_urgency:
+                  type: string
+                  enum: [URGENT, NOT_URGENT, UNDECIDED, RESOLVED]
+                Team_list:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Ticket logged or displayed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Incident_ID:
+                    type: string
+                    format: uuid
+                  Ticket_ID:
+                    type: string
+                    description: ticket_type_strong format (UUID + number increment + version_num).
+                  Status:
+                    type: string
+                    example: "Logged"
+                  UUID_Description:
+                    type: string
+                  Ticket_Description:
+                    type: string
+                  Materiality_type:
+                    type: string
+                  uuid_severity:
+                    type: string
+                  uuid_urgency:
+                    type: string
+                  ticket_severity:
+                    type: string
+                  ticket_urgency:
+                    type: string
+                  Team_List:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+/notifier:
+    post:
+      summary: Notifier Path
+      description: Handles team claims or notifications regarding specific ticket numbers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - Team_Names
+                - Method
+                - Ticket_Number
+              properties:
+                Team_Names:
+                  type: array
+                  items:
+                    type: string
+                Method:
+                  type: string
+                  enum: [CLAIM, NOTIFY]
+                Ticket_Number:
+                  type: string
+                  description: ticket_type_weak format
+      responses:
+        '200':
+          description: Claim or notification executed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  UUID:
+                    type: integer
+                  Ticket_Number:
+                    type: string
+                  Status:
+                    type: string
+                    example: "Claimed ticket"
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /logs:
+    post:
+      summary: Request Log Path
+      description: Retrieves complete log details for an incident ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - Incident_ID
+                - Timestamp
+              properties:
+                Incident_ID:
+                  type: string
+                  format: uuid
+                  description: Must exist.
+                Timestamp:
+                  type: string
+                  format: date-time
+                  description: Must not be in the future.
+      responses:
+        '200':
+          description: Log retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Incident_ID:
+                    type: string
+                    format: uuid
+                  Description:
+                    type: string
+                  Materiality_type:
+                    type: string
+                  Severity:
+                    type: string
+                  Urgency:
+                    type: string
+                  Ticket_ID_List:
+                    type: array
+                    items:
+                      type: string
+                  Status:
+                    type: string
+                    example: "Log Retrieved"
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /dependencies:
+    post:
+      summary: Dependency Control Path
+      description: Manages creation, matching, or removal of dependencies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dp_name
+                - method
+              properties:
+                dp_name:
+                  type: string
+                  description: "Constraints: NEW (must DNE), MATCH/REMOVE (must exist)."
+                method:
+                  type: string
+                  enum: [NEW, MATCH, REMOVE]
+      responses:
+        '200':
+          description: Dependency action executed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dp_name:
+                    type: string
+                  status:
+                    type: string
+                    example: "Added"
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /reset:
+    post:
+      summary: Database Control Path
+      description: Testing-only endpoint to wipe database state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - method
+              properties:
+                method:
+                  type: string
+                  enum: [RESET]
+      responses:
+        '200':
+          description: Database wiped successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "DB Wiped"
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  responses:
+    ErrorResponse:
+      description: Error response structure corresponding to Error_type and Message.
+      content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      Error:
+                        type: string
+                        enum: [UUID_EXISTS, UUID_DNE, INVALID_DATA, DP_EXISTS, DP_DNE, TIMEOUT]
+                      Message:
+                        type: string
+```

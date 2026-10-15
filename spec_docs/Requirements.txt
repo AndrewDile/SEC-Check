@@ -1,0 +1,128 @@
+Requirements for System:
+REQ-01: The system shall ingest and store cybersecurity incidents.
+This addresses the stakeholder need for organization when handling cybersecurity incidents
+REQ-02: The system shall log user actions and accesses to incident response tickets in an immutable fashion.
+This addresses the stakeholder's need to have a reliable record of incident information such as, when an incident was found, materiality decision made, and time to file form 8-K. “A registrant’s materiality determination regarding a cybersecurity incident must be made without unreasonable delay after discovery of the incident ”(Final Rule pg 185)
+REQ-03: The system shall allow tickets to be marked as material or immaterial, and assigned a priority level by a user.
+“‘a registrant shall make a materiality determination regarding a cybersecurity incident as soon as reasonably practicable after discovery of the incident.’”(Final Rule pg 14) The materiality decision is a core aspect of the regulation and needs to be built into our system
+REQ-04: The system shall notify all teams of an incident, allowing one of them to claim it and submit information within 4 days. 
+“An Item 1.05 Form 8-K must be filed within four business days of determining an incident was material.” (Final Rule pg 12) Deadlines are vital to regulation compliance
+REQ-05: The system shall monitor for 3rd party dependency vulnerabilities and aggregate the relevant data to be ingested into the system.
+“The enumerated elements that a registrant should address in its Item 106(b) disclosure, as applicable, are: - Whether the registrant has processes to oversee and identify material risks from cybersecurity threats associated with its use of any third-party service provider.” (Final Rule pg 62-63)
+REQ-06: The system shall organize information regarding cybersecurity incidents per the sections of Item 1.05 in Form 8-K. 
+This shall assist the stakeholders in fulfilling Form 8-K though our system does not offer automatic completion of the form we will create a feature that presents information that may be relevant to the form
+
+Acceptance Criteria:
+AC-00(MODEL): 
+Setup/Input
+Input to system
+Action/Check
+Action the system performs on the input
+Expected Result
+What the system should produce in response to the action and input
+Method of Evaluation
+How can you tell the system produces the expected result?
+Failure and Boundary Cases
+Failure: Expected result is not what the system produces GIVEN a well formed input
+Boundary case: Expected result is not what the system produces GIVEN a badly formed input
+Automation
+Possible automation cases
+Which cases require manual action or inspection
+
+AC-01: 
+Setup/Input
+The input is a manually detected incident or an automatically detected  incident
+Action/Check
+The incident is stored in the database
+Expected Result
+The correct data about the incident is stored
+Method of Evaluation
+Query the databases and compare to expected result
+Failure and Boundary Cases
+Invalid input
+Valid input fails to be correctly stored
+Can it be automated? Identify which checks can run automatically and which require inspection, analysis, or human judgment.
+This acceptance-criterion can have be fully automated, given an input and expected output we can let the system run and setup an automatic test to compare the output to the expected output
+
+AC-02: 
+Setup/Input
+Simulated user actions such as generating tickets, forwarding tickets, accessing tickets associated with a given cybersecurity incident
+Action/Check
+Add the action to a log containing all actions for an associated incident along with action details and timestamp 
+Expected Result
+The action is added to the correct log, is classified as the correct action and contains the correct timestamp
+Method of Evaluation
+Compare the ticket classification, ticket time, and connected incident to the logged classification, timestamp, and associated incident
+Failure and Boundary Cases
+Failure would be out of order logs, incorrect ticket information
+Boundary Case: System does not log improperly formatted tickets (Input validation)
+Boundary Case: Ticket time standardizes a universal time zone that is accounted for across time zones
+Can it be automated?
+Can generate automated ticket data sets and see if they are logged properly and in the correct order according to the timestamps
+
+AC-03: 
+Setup/Input
+There is a created ticket and it is marked material or immaterial by a user
+Action/Check
+The system moves the ticket to either the proper personnel or to storage depending on a marking of material or immaterial respectively 
+Expected Result
+The ticket is marked as the user indicated and moved to the correct location
+Method of Evaluation
+Query the database and compare the tickets marking and location to the expected result
+Failure and Boundary Cases
+A ticket cannot be marked
+A ticket is not marked as the user indicated
+A ticket is not moved to the correct location based of the marking
+Can it be automated?
+Yes, the system given an expected input and output can compare the tickets final actual marking and stored location to the expected marking and stored location
+
+AC-04:
+Setup/Input
+Known teams and roles are configured, and a new incident is used as input.
+Action/Check
+The system notifies appropriate roles during each state of the incident’s response.
+Expected Result
+An audit log showing when each role gets notified at each point of the incident response.
+Method of Evaluation
+The log mirrors the expected result, with the events appearing in the correct order.
+Failure and Boundary Cases
+Failures
+Events appear in the audit in incorrect order.
+Events are missing from the audit. 
+A task is assigned to the wrong role, or is not assigned.
+Boundary Cases: 
+A task is assigned to a role with zero configured users.
+A task is assigned with a deadline that has already passed.
+Automation
+An automated test could be built to set up pre-defined team configurations, ingest a pre-defined incident, and then step through the incident response and take actions as each configured role.
+
+AC-05:
+Setup/Input
+Dependencies and sources of cybersecurity incidents.
+Action/Check
+Monitors the sources of cybersecurity incidents for overlap with the given dependencies and collects the data for ingest.
+Expected Result
+Cybersecurity incident in the database with the collected information.
+Method of Evaluation
+Query the database for the incident and verify it matches the source
+Failure and Boundary Cases
+Failure would be an incident being picked up when no dependency exists or an incident not being picked up when a dependency does exist (false positive, false negative).
+A boundary case would be that the system does not recognize the dependency of a dependency.
+Automation
+This can be automated by using a frozen dataset of incidents and dependencies and running these through the system. The output can then be checked against a known expected result.
+
+AC-06: 
+Setup/Input
+There is a ticket that has been marked as material and handled by a user(s), a user has then requested to view data relevant to form 8-K
+Action/Check
+The system presents all information it has collected relevant to form 8-K
+Expected Result
+A document of containing all relevant information to form 8-K
+Method of Evaluation
+Compare the information output from the system to the information to the information that was originally entered
+Failure and Boundary Cases
+No information, inaccurate, or irrelevant information is displayed
+Information is requested for a ticket not marked as material, the system should reject this input
+Can it be automated?
+Yes, a ticket can be created, its lifetime simulated and then the information relevant to form 8-k can be requested. We can compare the information from the system to the expected information.
+

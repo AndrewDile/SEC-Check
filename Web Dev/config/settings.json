@@ -1,0 +1,23 @@
+{
+  "_comment": "Web App settings. Environment variables override these (see secheck_web/config.py). Users/auth are a development placeholder until the team picks an auth method (gap G-6). core-gateway is the service user the mock Core API signs in as when it forwards Core API calls to the Web App; it is hidden from the sign-in picker.",
+  "host": "127.0.0.1",
+  "port": 8000,
+  "core_api_url": "http://127.0.0.1:8001",
+  "core_timeout_seconds": 10,
+  "core_use_system_proxy": false,
+  "start_mock_core": true,
+  "mock_core_port": 8001,
+  "mock_core_forwarding": true,
+  "mock_core_gateway_user": "core-gateway",
+  "teams": ["LEGAL", "CYBER1", "CYBER2"],
+  "users": {
+    "alice": ["CYBER1"],
+    "bob": ["CYBER2"],
+    "carol": ["LEGAL"],
+    "dana": ["LEGAL", "CYBER1"],
+    "core-gateway": ["LEGAL", "CYBER1", "CYBER2"]
+  },
+  "decision_teams": [],
+  "auth_mode": "dev",
+  "log_requests": true
+}

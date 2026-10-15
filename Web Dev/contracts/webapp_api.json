@@ -1,0 +1,1295 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SEC-Check Web App API",
+    "version": "0.1.0",
+    "description": "Browser-facing API for the Web App component. Every operation is carried out through the Core API (\"Incident and Dependency Platform Cross-Team Testing API\"). Field names, enums and error envelope match the Core API.\n"
+  },
+  "servers": [
+    {
+      "url": "/webapp/v1"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    }
+  ],
+  "paths": {
+    "/incidents": {
+      "post": {
+        "summary": "Manual intake",
+        "description": "Core: [/dependencies MATCH] -> /incidents NEW -> /tickets NEW (intake audit ticket). REQ-01, REQ-02, REQ-05.",
+        "operationId": "createIncident",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Incident created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentCreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "502": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "504": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "summary": "List incidents (PROPOSED - requires Core list operation)",
+        "operationId": "listIncidents",
+        "parameters": [
+          {
+            "name": "Materiality",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Materiality_type"
+            }
+          },
+          {
+            "name": "Severity",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Severity_type"
+            }
+          },
+          {
+            "name": "Urgency",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Urgency_type"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of incidents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "Incidents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Incident"
+                      }
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/incidents/{Incident_ID}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Incident_ID"
+        }
+      ],
+      "get": {
+        "summary": "Incident info",
+        "description": "Core: /incidents GET. REQ-01.",
+        "operationId": "getIncident",
+        "responses": {
+          "200": {
+            "description": "Incident data fetched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Edit incident details (not decision fields)",
+        "description": "Core: /incidents GET -> [/dependencies MATCH] -> /incidents EDIT -> /tickets NEW (audit). REQ-01, REQ-02.",
+        "operationId": "editIncident",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": false,
+                "properties": {
+                  "Description": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "Dependency_Name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Incident edited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Incident"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "Audit_Ticket_ID": {
+                          "$ref": "#/components/schemas/Ticket_type_strong"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/incidents/{Incident_ID}/decision": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Incident_ID"
+        }
+      ],
+      "put": {
+        "summary": "Record materiality / severity / urgency decision",
+        "description": "Core: /incidents GET -> /incidents EDIT -> /tickets NEW (decision ticket) -> [/notifier NOTIFY all teams if MATERIAL]. REQ-02, REQ-03, REQ-04.",
+        "operationId": "recordDecision",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decision recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/incidents/{Incident_ID}/tickets": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Incident_ID"
+        }
+      ],
+      "get": {
+        "summary": "List tickets for an incident",
+        "description": "Core: /logs -> [/tickets GET per ticket if expand=true]. REQ-02.",
+        "operationId": "listIncidentTickets",
+        "parameters": [
+          {
+            "name": "expand",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tickets listed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "Incident_ID": {
+                      "type": "string"
+                    },
+                    "Ticket_ID_List": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Ticket_type_strong"
+                      }
+                    },
+                    "Tickets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Ticket"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create ticket",
+        "description": "Core: /tickets NEW -> [/notifier NOTIFY Team_list]. REQ-02, REQ-04.",
+        "operationId": "createTicket",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ticket logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Ticket"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "Notified_Teams": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/incidents/{Incident_ID}/tickets/{Ticket_number}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Incident_ID"
+        },
+        {
+          "$ref": "#/components/parameters/Ticket_number"
+        }
+      ],
+      "get": {
+        "summary": "Get ticket",
+        "description": "Core: /tickets GET. REQ-02.",
+        "operationId": "getTicket",
+        "responses": {
+          "200": {
+            "description": "Ticket displayed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Edit ticket (creates a new version)",
+        "description": "Core: /tickets EDIT. Old version remains in log. REQ-02, REQ-03.",
+        "operationId": "editTicket",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "Description"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "Description": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "Ticket_severity": {
+                    "$ref": "#/components/schemas/Severity_type"
+                  },
+                  "Ticket_urgency": {
+                    "$ref": "#/components/schemas/Urgency_type"
+                  },
+                  "Team_list": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ticket edited; new Ticket_ID version returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/tickets/{Ticket_number}/claim": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Ticket_number"
+        }
+      ],
+      "post": {
+        "summary": "Claim a ticket for one team",
+        "description": "Core: /notifier CLAIM with Team_Names = [Team_Name]. REQ-04.",
+        "operationId": "claimTicket",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "Team_Name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "Team_Name": {
+                    "type": "string",
+                    "description": "Team_type; user must be a member."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ticket claimed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifierResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/tickets/{Ticket_number}/notify": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Ticket_number"
+        }
+      ],
+      "post": {
+        "summary": "Notify teams about a ticket",
+        "description": "Core: /notifier NOTIFY. REQ-04.",
+        "operationId": "notifyTeams",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "Team_Names"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "Team_Names": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Teams notified.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifierResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/queue": {
+      "get": {
+        "summary": "Team ticket queue (PROPOSED - requires Core queue query)",
+        "operationId": "getQueue",
+        "parameters": [
+          {
+            "name": "team",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "claim",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Ticket_claim_type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queue for the team.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "Team": {
+                      "type": "string"
+                    },
+                    "Tickets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/QueueItem"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/incidents/{Incident_ID}/log": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Incident_ID"
+        }
+      ],
+      "get": {
+        "summary": "Incident log",
+        "description": "Core: /logs (Timestamp set by Web App). REQ-02, REQ-06.",
+        "operationId": "getIncidentLog",
+        "responses": {
+          "200": {
+            "description": "Log retrieved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/incidents/{Incident_ID}/form-8k": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Incident_ID"
+        }
+      ],
+      "get": {
+        "summary": "Form 8-K Item 1.05 view (MATERIAL incidents only)",
+        "description": "Core: /incidents GET -> /logs -> /tickets GET per ticket. Returns INVALID_DATA if not MATERIAL. REQ-06, AC-06.",
+        "operationId": "getForm8kView",
+        "responses": {
+          "200": {
+            "description": "8-K view assembled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Form8kView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/dependencies": {
+      "post": {
+        "summary": "Add dependency",
+        "description": "Core: /dependencies NEW. REQ-05.",
+        "operationId": "addDependency",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "dp_name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "dp_name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dependency added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/dependencies/{dp_name}": {
+      "parameters": [
+        {
+          "name": "dp_name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Check whether a dependency exists",
+        "description": "Core: /dependencies MATCH. REQ-05.",
+        "operationId": "matchDependency",
+        "responses": {
+          "200": {
+            "description": "Match result (\"Exists\" or \"Does not Exist\").",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove dependency",
+        "description": "Core: /dependencies REMOVE. REQ-05.",
+        "operationId": "removeDependency",
+        "responses": {
+          "200": {
+            "description": "Dependency removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/teams": {
+      "get": {
+        "summary": "Configured teams",
+        "description": "No Core call. Returns Team_type values from Web App configuration.",
+        "operationId": "listTeams",
+        "responses": {
+          "200": {
+            "description": "Team list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "Teams": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "secheck_session",
+        "description": "Placeholder. User authentication method is TBD in the system design."
+      }
+    },
+    "parameters": {
+      "Incident_ID": {
+        "name": "Incident_ID",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
+      },
+      "Ticket_number": {
+        "name": "Ticket_number",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Ticket_type_weak"
+        }
+      }
+    },
+    "schemas": {
+      "Materiality_type": {
+        "type": "string",
+        "enum": [
+          "MATERIAL",
+          "IMMATERIAL",
+          "UNDECIDED"
+        ]
+      },
+      "Severity_type": {
+        "type": "string",
+        "enum": [
+          "HIGH",
+          "MEDIUM",
+          "LOW",
+          "UNDECIDED",
+          "RESOLVED"
+        ]
+      },
+      "Urgency_type": {
+        "type": "string",
+        "enum": [
+          "URGENT",
+          "NOT_URGENT",
+          "UNDECIDED",
+          "RESOLVED"
+        ]
+      },
+      "Ticket_claim_type": {
+        "type": "string",
+        "enum": [
+          "CLAIMED",
+          "UNCLAIMED"
+        ]
+      },
+      "Ticket_type_weak": {
+        "type": "string",
+        "pattern": "^[0-9]+_[0-9]+$"
+      },
+      "Ticket_type_strong": {
+        "type": "string",
+        "pattern": "^[0-9]+_[0-9]+_[0-9]+$"
+      },
+      "WebApp_error_type": {
+        "type": "string",
+        "enum": [
+          "UUID_EXISTS",
+          "UUID_DNE",
+          "INVALID_DATA",
+          "DP_EXISTS",
+          "DP_DNE",
+          "TIMEOUT",
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "UPSTREAM_UNAVAILABLE"
+        ]
+      },
+      "IncidentCreateRequest": {
+        "type": "object",
+        "required": [
+          "Description"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "Incident_ID": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Optional. Generated by Web App if omitted. Must not already exist."
+          },
+          "Description": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "Dependency_Name": {
+            "type": "string"
+          },
+          "Timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Discovery time. Must not be in the future. Default now (UTC)."
+          },
+          "Materiality": {
+            "$ref": "#/components/schemas/Materiality_type"
+          },
+          "Severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "Urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          }
+        }
+      },
+      "Incident": {
+        "type": "object",
+        "properties": {
+          "Incident_ID": {
+            "type": "string"
+          },
+          "Status": {
+            "type": "string",
+            "example": "Data Fetched"
+          },
+          "Description": {
+            "type": "string"
+          },
+          "Dependency_Name": {
+            "type": "string"
+          },
+          "Materiality": {
+            "$ref": "#/components/schemas/Materiality_type"
+          },
+          "Severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "Urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          }
+        }
+      },
+      "IncidentCreateResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Incident"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "Intake_Ticket_ID": {
+                "$ref": "#/components/schemas/Ticket_type_strong"
+              }
+            }
+          }
+        ]
+      },
+      "DecisionRequest": {
+        "type": "object",
+        "required": [
+          "Rationale"
+        ],
+        "additionalProperties": false,
+        "minProperties": 2,
+        "properties": {
+          "Materiality": {
+            "$ref": "#/components/schemas/Materiality_type"
+          },
+          "Severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "Urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          },
+          "Rationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        }
+      },
+      "DecisionResponse": {
+        "type": "object",
+        "properties": {
+          "Incident_ID": {
+            "type": "string"
+          },
+          "Status": {
+            "type": "string",
+            "example": "Decision Recorded"
+          },
+          "Materiality": {
+            "$ref": "#/components/schemas/Materiality_type"
+          },
+          "Severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "Urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          },
+          "Decision_Ticket_ID": {
+            "$ref": "#/components/schemas/Ticket_type_strong"
+          },
+          "Determined_At": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "Notified_Teams": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "Filing_Deadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "TicketCreateRequest": {
+        "type": "object",
+        "required": [
+          "Description"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "Description": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "Ticket_severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "Ticket_urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          },
+          "Team_list": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "Notify": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "Ticket": {
+        "type": "object",
+        "description": "Same fields as the Core /tickets response.",
+        "properties": {
+          "Incident_ID": {
+            "type": "string"
+          },
+          "Ticket_ID": {
+            "$ref": "#/components/schemas/Ticket_type_strong"
+          },
+          "Status": {
+            "type": "string",
+            "example": "Displayed"
+          },
+          "UUID_Description": {
+            "type": "string"
+          },
+          "Ticket_Description": {
+            "type": "string"
+          },
+          "Materiality_type": {
+            "$ref": "#/components/schemas/Materiality_type"
+          },
+          "uuid_severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "uuid_urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          },
+          "ticket_severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "ticket_urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          },
+          "Ticket_Claim": {
+            "$ref": "#/components/schemas/Ticket_claim_type"
+          },
+          "Team_List": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NotifierResponse": {
+        "type": "object",
+        "description": "Same fields as the Core /notifier response.",
+        "properties": {
+          "UUID": {
+            "type": "string"
+          },
+          "Ticket_Number": {
+            "$ref": "#/components/schemas/Ticket_type_weak"
+          },
+          "Status": {
+            "type": "string",
+            "example": "Claimed ticket"
+          }
+        }
+      },
+      "QueueItem": {
+        "type": "object",
+        "properties": {
+          "Ticket_number": {
+            "$ref": "#/components/schemas/Ticket_type_weak"
+          },
+          "Incident_ID": {
+            "type": "string"
+          },
+          "Ticket_Description": {
+            "type": "string"
+          },
+          "ticket_severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "ticket_urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          },
+          "Ticket_Claim": {
+            "$ref": "#/components/schemas/Ticket_claim_type"
+          },
+          "Notified_At": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "Filing_Deadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "LogResponse": {
+        "type": "object",
+        "description": "Same fields as the Core /logs response.",
+        "properties": {
+          "Incident_ID": {
+            "type": "string"
+          },
+          "Description": {
+            "type": "string"
+          },
+          "Materiality_type": {
+            "$ref": "#/components/schemas/Materiality_type"
+          },
+          "Severity": {
+            "$ref": "#/components/schemas/Severity_type"
+          },
+          "Urgency": {
+            "$ref": "#/components/schemas/Urgency_type"
+          },
+          "Ticket_ID_List": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ticket_type_strong"
+            }
+          },
+          "Status": {
+            "type": "string",
+            "example": "Log Retrieved"
+          }
+        }
+      },
+      "Form8kView": {
+        "type": "object",
+        "properties": {
+          "Incident_ID": {
+            "type": "string"
+          },
+          "Status": {
+            "type": "string",
+            "example": "8-K View Assembled"
+          },
+          "Item_1_05": {
+            "type": "object",
+            "properties": {
+              "Nature": {
+                "type": "string"
+              },
+              "Scope": {
+                "type": "object",
+                "properties": {
+                  "Severity": {
+                    "$ref": "#/components/schemas/Severity_type"
+                  },
+                  "Dependency_Name": {
+                    "type": "string"
+                  },
+                  "Teams_Involved": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "Timing": {
+                "type": "object",
+                "properties": {
+                  "Discovered_At": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "Determined_At": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "Events": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "Ticket_ID": {
+                          "$ref": "#/components/schemas/Ticket_type_strong"
+                        },
+                        "Timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "Summary": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "Material_Impact": {
+                "type": "string"
+              }
+            }
+          },
+          "Filing": {
+            "type": "object",
+            "properties": {
+              "Determined_At": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "Filing_Deadline": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              }
+            }
+          },
+          "Source_Tickets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ticket_type_strong"
+            }
+          }
+        }
+      },
+      "DependencyResponse": {
+        "type": "object",
+        "description": "Same fields as the Core /dependencies response.",
+        "properties": {
+          "dp_name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "example": "Added"
+          }
+        }
+      }
+    },
+    "responses": {
+      "ErrorResponse": {
+        "description": "Same {Error, Message} envelope as the Core API, with optional Web App extras.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "Error",
+                "Message"
+              ],
+              "properties": {
+                "Error": {
+                  "$ref": "#/components/schemas/WebApp_error_type"
+                },
+                "Message": {
+                  "type": "string"
+                },
+                "Core_Path": {
+                  "type": "string",
+                  "description": "Core API path that produced the error, if any."
+                },
+                "Completed_Steps": {
+                  "type": "array",
+                  "description": "Core calls that already succeeded in a multi-step operation.",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
