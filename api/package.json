@@ -1,0 +1,23 @@
+{
+  "name": "sec-check-api",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "tsx watch src/coreapi.ts",
+    "build": "tsc",
+    "start": "node dist/coreapi.js"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "express": "^5.3.0",
+    "mysql2": "^3.24.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

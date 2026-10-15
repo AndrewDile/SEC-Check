@@ -1,0 +1,13 @@
+services:
+  api:
+    build: ./api
+    environment:
+      PORT: 3001
+    ports:
+      - "3001:3001"
+
+  # Add your container here, e.g.
+  # web:
+  #   build: ./web
+  #   ports:
+  #     - "3000:3000"
