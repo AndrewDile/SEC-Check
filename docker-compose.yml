@@ -28,5 +28,26 @@ services:
     depends_on:
       - api
 
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: ingestion_worker/Dockerfile
+    environment:
+      CORE_API_URL: http://core-api:8000
+      CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
+      INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
+      SEC_USER_AGENT: ${SEC_USER_AGENT}
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification_service/Dockerfile
+    environment:
+      CORE_API_URL: http://core-api:8000
+      CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
+      INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
+    restart: unless-stopped
+
 volumes:
   db-data:

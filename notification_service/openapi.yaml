@@ -1,0 +1,51 @@
+# The notification service's API. Only the Core API calls it. Payloads are in core_api.openapi.yaml.
+openapi: 3.1.0
+info:
+  title: Notification service API
+  version: 0.1.0
+  description: How the Core API hands notifications to the notification service. Only the Core API calls it.
+
+servers:
+  - url: http://localhost:8001
+    description: Local development (the notifier's default `PORT`)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /notifications:
+    post:
+      operationId: sendNotification
+      summary: Hand over a notification
+      description: |
+        The Core API calls this whenever it creates an incident, and retries until it gets
+        `202`, which is safe because repeating a `notification_id` is a no-op. The
+        notification service answers right away, delivers afterwards, and then reports the
+        results to the Core API (`reportNotificationResults`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "core_api.openapi.yaml#/components/schemas/NotificationRequest" }
+      responses:
+        "202":
+          description: Accepted. Delivery happens after the response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notification_id]
+                properties:
+                  notification_id: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The static token in the notifier's `INBOUND_TOKEN`. Only the Core API has it.
+
+  responses:
+    Unauthorized:
+      description: The bearer token is missing or wrong.

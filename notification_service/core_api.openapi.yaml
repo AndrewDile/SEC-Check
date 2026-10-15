@@ -1,0 +1,195 @@
+# What the notification service needs from the Core API. After changing it, run generate_models.sh.
+openapi: 3.1.0
+info:
+  title: Core API (notification service's needs)
+  version: 0.1.0
+  description: |
+    The Core API endpoint the notification service calls, and the payloads it exchanges with
+    the Core API. The Core API service aggregates this with every other service's needs.
+
+    Services never call each other. The Core API calls the notification service through the
+    service's own API (openapi.yaml), whose payloads are defined here.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (the notifier's default `CORE_API_URL`)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Notification service
+
+paths:
+  /notif/notifications/{notification_id}/results:
+    post:
+      operationId: reportNotificationResults
+      summary: Report which recipients a notification reached
+      description: |
+        Called after the notification service has tried every recipient.
+        The Core API keeps the results as the audit trail.
+      tags: [Notification service]
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationResults" }
+      responses:
+        "200":
+          description: The results were stored.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No notification has this ID.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The static token in the notifier's `CORE_API_TOKEN`.
+
+  responses:
+    Unauthorized:
+      description: The bearer token is missing or wrong.
+
+  schemas:
+    # Incidents. Other services' needs may define these too; once aggregated, they must agree.
+
+    SourceName:
+      type: string
+      enum: [cisa_kev, sec_edgar_8k]
+
+    Priority:
+      type: string
+      enum: [critical, high, medium, low]
+
+    Confidence:
+      type: string
+      enum: [high, medium]
+
+    MatchedDependency:
+      description: One of the company's dependencies that an incident may affect, and why we think so.
+      type: object
+      required: [dependency_id, vendor, product, confidence, reason]
+      properties:
+        dependency_id: { type: string }
+        vendor: { type: string }
+        product: { type: string }
+        version: { type: [string, "null"] }
+        confidence: { $ref: "#/components/schemas/Confidence" }
+        reason: { type: string }
+
+    IncidentCreate:
+      description: A possible incident for one company, found by the ingestion worker.
+      type: object
+      required:
+        - company_id
+        - source
+        - external_id
+        - title
+        - summary
+        - source_url
+        - published_at
+        - detected_at
+        - priority_hint
+        - matched_dependencies
+      properties:
+        company_id: { type: string }
+        source: { $ref: "#/components/schemas/SourceName" }
+        external_id:
+          type: string
+          description: "The source's own ID: a CVE ID, an SEC accession number, ..."
+        title: { type: string }
+        summary: { type: string }
+        source_url: { type: string, format: uri }
+        published_at:
+          type: string
+          format: date-time
+          description: When the source published it.
+        detected_at:
+          type: string
+          format: date-time
+          description: When we matched it, for the audit trail.
+        priority_hint:
+          $ref: "#/components/schemas/Priority"
+          description: A hint for sorting only. Whether an incident is material is for the company to decide.
+        matched_dependencies:
+          type: array
+          items: { $ref: "#/components/schemas/MatchedDependency" }
+        details:
+          type: object
+          default: {}
+          description: Source-specific extras.
+
+    Incident:
+      description: An incident as the Core API stores it.
+      allOf:
+        - $ref: "#/components/schemas/IncidentCreate"
+        - type: object
+          required: [id, created_at]
+          properties:
+            id: { type: string }
+            created_at: { type: string, format: date-time }
+
+    # Notifications ---------------------------------------------------------
+
+    Recipient:
+      description: One way to reach one team. The Core API sends one per contact method of every team.
+      type: object
+      required: [recipient_id, team_name, channel, address]
+      properties:
+        recipient_id: { type: string }
+        team_name: { type: string }
+        channel:
+          type: string
+          examples: [email, sms, ms_teams]
+        address:
+          type: string
+          description: "What the channel needs: an email address, a phone number, a webhook URL, ..."
+
+    NotificationRequest:
+      description: What the Core API sends the notification service when it creates an incident.
+      type: object
+      required: [notification_id, incident, claim_url, recipients]
+      properties:
+        notification_id:
+          type: string
+          description: Repeating an ID is a no-op, so the Core API can safely retry.
+        incident: { $ref: "#/components/schemas/Incident" }
+        claim_url:
+          type: string
+          format: uri
+          description: The web app page where a team claims the incident.
+        recipients:
+          type: array
+          items: { $ref: "#/components/schemas/Recipient" }
+
+    DeliveryStatus:
+      type: string
+      enum: [delivered, failed]
+
+    DeliveryResult:
+      type: object
+      required: [recipient_id, status, attempts]
+      properties:
+        recipient_id: { type: string }
+        status: { $ref: "#/components/schemas/DeliveryStatus" }
+        attempts:
+          type: integer
+          minimum: 0
+          description: 0 when the notification service has no channel by that name.
+        error: { type: [string, "null"] }
+        delivered_at: { type: [string, "null"], format: date-time }
+
+    NotificationResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/DeliveryResult" }
