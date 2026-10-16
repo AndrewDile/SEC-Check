@@ -4,7 +4,8 @@ services:
     environment:
       PORT: 3001
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
+    restart: unless-stopped
 
   db:
     image: mysql:8.4
@@ -14,10 +15,11 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"   # local tools only, never public
     volumes:
       - ./db/migrations:/docker-entrypoint-initdb.d   # runs .sql on first start only
       - db-data:/var/lib/mysql
+    restart: unless-stopped
 
   web_app:
     build: ./web_app
@@ -27,13 +29,14 @@ services:
       - "8000:8000"
     depends_on:
       - api
+    restart: unless-stopped
 
   ingestion-worker:
     build:
       context: .
       dockerfile: ingestion_worker/Dockerfile
     environment:
-      CORE_API_URL: http://core-api:8000
+      CORE_API_URL: http://api:3001
       CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
       INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
       SEC_USER_AGENT: ${SEC_USER_AGENT}
@@ -44,7 +47,7 @@ services:
       context: .
       dockerfile: notification_service/Dockerfile
     environment:
-      CORE_API_URL: http://core-api:8000
+      CORE_API_URL: http://api:3001
       CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
     restart: unless-stopped
