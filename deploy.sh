@@ -3,15 +3,15 @@
 #
 #   ./deploy.sh
 #
-# Reads DEPLOY_HOST and DEPLOY_KEY from .env in the repo root; the whole file is copied to the server.
+# Reads DEPLOY_HOST and DEPLOY_KEY from the environment or from .env in the repo root.
+# .env is never copied: install it on the server by hand, at ~/sec-check/.env.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-[ -f .env ] || { echo "Missing .env (copy .env.example and fill it in)" >&2; exit 1; }
-. ./.env
+[ -f .env ] && . ./.env
 
-HOST=${DEPLOY_HOST:?Set DEPLOY_HOST in .env}
-KEY=${DEPLOY_KEY:?Set DEPLOY_KEY in .env}
+HOST=${DEPLOY_HOST:?Set DEPLOY_HOST}
+KEY=${DEPLOY_KEY:?Set DEPLOY_KEY}
 DIR=sec-check
 
 ssh_() { ssh -i "$KEY" "$HOST" "$@"; }
@@ -48,11 +48,12 @@ fi
 EOF
 
 echo "==> Copying files"
+# Excluding .env also keeps --delete from removing the server's copy
 rsync -az --delete -e "ssh -i $KEY" \
-  --exclude .git --exclude node_modules --exclude dist --exclude .venv \
+  --exclude .env --exclude .git --exclude node_modules --exclude dist --exclude .venv \
   --exclude __pycache__ --exclude .ruff_cache \
   ./ "$HOST:$DIR/"
-ssh_ "chmod 600 $DIR/.env"
+ssh_ "test -f $DIR/.env" || { echo "Missing $DIR/.env on the server; copy it there first" >&2; exit 1; }
 
 echo "==> Restarting containers"
 ssh_ "cd $DIR && sudo docker compose down && sudo docker compose up -d --build && sudo docker image prune -f && sudo docker compose ps"
