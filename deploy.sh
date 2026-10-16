@@ -23,15 +23,19 @@ if ! command -v docker >/dev/null; then
   sudo dnf install -y docker
   sudo systemctl enable --now docker
 fi
-# Amazon Linux's docker package has no compose or buildx plugin
+# Amazon Linux's docker package has no compose plugin and a buildx too old for compose.
+# Plugins here take precedence over the packaged ones in /usr/libexec/docker/cli-plugins.
 plugins=/usr/local/lib/docker/cli-plugins
+sudo mkdir -p $plugins
 if [ ! -x $plugins/docker-compose ]; then
-  sudo mkdir -p $plugins
   sudo curl -fsSL -o $plugins/docker-compose \
     https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64
+  sudo chmod +x $plugins/docker-compose
+fi
+if [ ! -x $plugins/docker-buildx ]; then
   sudo curl -fsSL -o $plugins/docker-buildx \
     https://github.com/docker/buildx/releases/download/v0.17.1/buildx-v0.17.1.linux-amd64
-  sudo chmod +x $plugins/docker-compose $plugins/docker-buildx
+  sudo chmod +x $plugins/docker-buildx
 fi
 # The instance has ~1 GB of RAM; builds and MySQL need swap
 if [ ! -f /swapfile ]; then
