@@ -3,8 +3,23 @@ services:
     build: ./api
     environment:
       PORT: 3001
+      DB_HOST: db
+      DB_NAME: seccheck
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      WORKER_URL: http://ingestion-worker:8002
+      NOTIFIER_URL: http://notification-service:8001
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:8000}   # for claim links in notifications
+      # Tokens the services send us, and the ones we send them
+      INGEST_CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
+      INGEST_INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
+      NOTIF_CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
+      NOTIF_INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
     ports:
       - "127.0.0.1:3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   db:
@@ -19,6 +34,10 @@ services:
     volumes:
       - ./db/migrations:/docker-entrypoint-initdb.d   # runs .sql on first start only
       - db-data:/var/lib/mysql
+    healthcheck:   # TCP, so it only passes once init scripts are done
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      retries: 30
     restart: unless-stopped
 
   web_app:
@@ -27,6 +46,16 @@ services:
       CORE_API_URL: http://api:3001
     ports:
       - "8000:8000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  tester:   # cross-team tester; inside the stack the Core API is http://api:3001
+    build: ./tester
+    environment:
+      TESTER_PORT: 8100
+    ports:
+      - "127.0.0.1:8100:8100"   # local only: the tester sends requests to any URL it's given
     depends_on:
       - api
     restart: unless-stopped
@@ -40,6 +69,8 @@ services:
       CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
       INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
       SEC_USER_AGENT: ${SEC_USER_AGENT}
+    depends_on:
+      - api
     restart: unless-stopped
 
   notification-service:
@@ -50,6 +81,8 @@ services:
       CORE_API_URL: http://api:3001
       CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
+    depends_on:
+      - api
     restart: unless-stopped
 
 volumes:

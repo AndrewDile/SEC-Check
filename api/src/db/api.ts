@@ -18,6 +18,10 @@ export interface Incident {
   severity: Severity;
   urgency: Urgency;
   reportedAt: Date;
+  // Set when the ingestion worker reported it; (source, externalId) is unique
+  source?: string;
+  externalId?: string;
+  ingest?: unknown;          // the worker's payload, returned as-is on a repeat report
 }
 
 export interface Ticket {
@@ -30,6 +34,7 @@ export interface Ticket {
   urgency: Urgency;
   teams: string[];
   claimedBy?: string;
+  reportedAt: Date;
 }
 
 export interface AuditEntry {
@@ -47,11 +52,14 @@ export interface Database {
   createIncident(incident: Omit<Incident, 'materiality' | 'severity' | 'urgency'> & Partial<Incident>): Promise<Incident>; // UUID_EXISTS
   editIncident(incidentId: string, changes: Partial<Omit<Incident, 'incidentId'>>): Promise<Incident>;                    // UUID_DNE
   getIncident(incidentId: string): Promise<Incident>;                                                                     // UUID_DNE
+  listIncidents(): Promise<Incident[]>;
+  findIncidentBySource(source: string, externalId: string): Promise<Incident | undefined>;                                // /ingest/incidents dedupe
 
   // /tickets
   createTicket(incidentId: string, ticket: { description: string; severity?: Severity; urgency?: Urgency; teams?: string[]; reportedAt: Date }): Promise<Ticket>;
   editTicket(incidentId: string, ticketNumber: number, changes: { description: string; severity?: Severity; urgency?: Urgency; teams?: string[] }): Promise<Ticket>; // new version
-  getTicket(incidentId: string, ticketNumber: number): Promise<Ticket>;    // latest version
+  getTicket(incidentId: string, ticketNumber: number, version?: number): Promise<Ticket>; // latest version unless given
+  listTickets(): Promise<Ticket[]>;                                        // latest version of every ticket, for the web app queue
   listTicketIds(incidentId: string): Promise<string[]>;                    // all strong IDs, for /logs
 
   // /notifier
@@ -66,8 +74,10 @@ export interface Database {
   addDependency(name: string, source?: 'MANUAL' | 'AUTO'): Promise<void>; // DP_EXISTS
   hasDependency(name: string): Promise<boolean>;
   removeDependency(name: string): Promise<void>;                          // DP_DNE
+  listDependencies(): Promise<string[]>;
 
   // /logs
+  logEvent(incidentId: string | undefined, eventType: string, payload: unknown): Promise<void>; // e.g. notifier delivery results
   getAuditLog(incidentId: string): Promise<AuditEntry[]>;
   verifyAuditChain(): Promise<{ ok: boolean; brokenAtSeq?: number }>;
 
