@@ -156,6 +156,44 @@ describe.skipIf(!API)('Core API pod contract', () => {
     });
   });
 
+  describe('/test/setup and /test/report (cross-team tester)', () => {
+    const report = async (id?: string) => {
+      const res = await fetch(`${API}/test/report${id === undefined ? '' : `?session_id=${encodeURIComponent(id)}`}`);
+      return { status: res.status, body: await res.json() };
+    };
+
+    it('wipes the database and makes the session active', async () => {
+      await post('/dependencies', { dp_name: 'okta', method: 'NEW' });
+      const id = `run-${Date.now()}-a`;
+      expect(await post('/test/setup', { session_id: id, setup: { teams: ['LEGAL', 'CYBER1', 'CYBER2'] } })).toEqual({ status: 201, body: { session_id: id } });
+      expect((await post('/dependencies', { dp_name: 'okta', method: 'MATCH' })).body.status).toBe('Does not Exist');
+      // default teams are back after the wipe
+      expect((await newIncident()).status).toBe(200);
+      expect((await newTicket(undefined, { Team_list: ['CYBER2'] })).status).toBe(200);
+
+      const r = await report(id);
+      expect(r.status).toBe(200);
+      expect(r.body).toEqual({ session_id: id, coverage: { code: { covered: null, total: null, basis: expect.any(String) } } });
+    });
+
+    it('allows one session at a time', async () => {
+      const first = `run-${Date.now()}-b`, second = `run-${Date.now()}-c`;
+      expect((await post('/test/setup', { session_id: first })).status).toBe(201);
+      expect(await post('/test/setup', { session_id: first })).toEqual({ status: 409, body: { message: expect.any(String), source: 'system' } });
+      expect((await post('/test/setup', { session_id: second })).status).toBe(201);
+      expect((await report(first)).status).toBe(404);   // replaced by the new session
+      expect((await report(second)).status).toBe(200);
+    });
+
+    it('rejects invalid requests in the tester error format', async () => {
+      for (const body of [{}, { session_id: '' }, { session_id: 5 }, { session_id: 'x', setup: [] }]) {
+        expect(await post('/test/setup', body)).toEqual({ status: 400, body: { message: expect.any(String), source: 'system' } });
+      }
+      expect((await report()).status).toBe(400);
+      expect((await report('never-set-up')).status).toBe(404);
+    });
+  });
+
   describe.skipIf(!INGEST_TOKEN)('/ingest (ingestion worker, not in the pod contract)', () => {
     const auth = { authorization: `Bearer ${INGEST_TOKEN}`, 'content-type': 'application/json' };
     const report = {

@@ -50,6 +50,16 @@ services:
       - api
     restart: unless-stopped
 
+  tester:   # cross-team tester; inside the stack the Core API is http://api:3001
+    build: ./tester
+    environment:
+      TESTER_PORT: 8100
+    ports:
+      - "127.0.0.1:8100:8100"   # local only: the tester sends requests to any URL it's given
+    depends_on:
+      - api
+    restart: unless-stopped
+
   ingestion-worker:
     build:
       context: .

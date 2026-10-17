@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+tests/
+dev/
+*.md
+report*.json

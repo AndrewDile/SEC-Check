@@ -1,0 +1,129 @@
+openapi: 3.1.1
+info:
+  title: SEC-Check Tester Interface
+  version: 0.1.0
+  description: >
+    Cross-team tester for the SEC-Check pod. Drives a target system through
+    its /test/setup, the Core API project paths and /test/report.
+servers:
+  # Replace with the registered tester base URL.
+  - url: https://team.example.edu/tester
+paths:
+  /test/setup:
+    post:
+      summary: Create a session and wait for system setup to succeed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_url]
+              properties:
+                target_url:
+                  type: string
+                  format: uri
+                  description: System base URL (http/https, no /test suffix, query, fragment or credentials).
+      responses:
+        '201':
+          description: System ready; same session ID returned by tester and system
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session_id]
+                properties:
+                  session_id: {type: string, minLength: 1}
+        '400': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /test/run:
+    post:
+      summary: Run the suite once and return the complete report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: {type: string, minLength: 1}
+      responses:
+        '200':
+          description: Complete suite report
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Report'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
+  /test/report:
+    get:
+      summary: Retrieve the stored report without running tests
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        '200':
+          description: Stored suite report
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Report'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409':
+          description: Execution has not ended; retry the lookup later
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+components:
+  responses:
+    Error:
+      description: Error with message and source
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Error:
+      type: object
+      required: [message, source]
+      properties:
+        message: {type: string, minLength: 1}
+        source: {type: string, enum: [tester, system, communication, unknown]}
+    Measure:
+      type: object
+      required: [covered, total, basis]
+      properties:
+        covered: {type: [integer, 'null'], minimum: 0}
+        total: {type: [integer, 'null'], minimum: 0}
+        basis: {type: string, minLength: 1}
+    Result:
+      type: object
+      required: [test_id, outcome, message]
+      properties:
+        test_id: {type: string, minLength: 1}
+        outcome: {type: string, enum: [pass, fail, error, skip]}
+        message: {type: string, minLength: 1}
+        source:
+          type: string
+          enum: [tester, system, communication, unknown]
+          description: Present only when outcome is error.
+    Report:
+      type: object
+      required: [session_id, target_url, results, coverage]
+      properties:
+        session_id: {type: string}
+        target_url: {type: string}
+        results:
+          type: array
+          items: {$ref: '#/components/schemas/Result'}
+        coverage:
+          type: object
+          required: [code, component, system]
+          properties:
+            code: {$ref: '#/components/schemas/Measure'}
+            component: {$ref: '#/components/schemas/Measure'}
+            system: {$ref: '#/components/schemas/Measure'}

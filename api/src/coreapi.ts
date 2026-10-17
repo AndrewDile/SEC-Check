@@ -2,6 +2,7 @@ import express from 'express';
 import { DbError, Incident, Materiality, Severity, Ticket, Urgency } from './db/api.js';
 import { MySqlDb } from './db/mysql.js';
 import { servicesRouter, worker } from './services.js';
+import { testError, testingRouter } from './testing.js';
 
 const db = MySqlDb.fromEnv();
 const app = express();
@@ -237,19 +238,33 @@ app.post(['/dependencies', '/dependancies'], async (req, res) => {
   }
 });
 
-app.post('/reset', async (req, res) => {
-  if (req.body?.method !== 'RESET') invalid('Method set to invalid data type');
+// Wipes the database and the worker's copy of the dependencies (/reset and /test/setup)
+async function wipe() {
   const dependencies = await db.listDependencies();
   await db.reset();
   dependencies.forEach(worker.delete);
+}
+
+app.post('/reset', async (req, res) => {
+  if (req.body?.method !== 'RESET') invalid('Method set to invalid data type');
+  await wipe();
   res.json({ status: 'DB Wiped' });
 });
+
+// Cross-team tester interface: /test/setup, /test/report
+
+app.use(testingRouter(wipe));
 
 // Ingestion worker and notification service ----------------------------------
 
 app.use(servicesRouter(db));
 
-app.use(((err, _req, res, _next) => {
+app.use(((err, req, res, _next) => {
+  if (req.path.startsWith('/test/')) {
+    if (err?.type === 'entity.parse.failed') return testError(res, 400, 'Body is not valid JSON.');
+    console.error(err);
+    return testError(res, 500, 'Unexpected error.');
+  }
   if (err instanceof DbError) return res.status(err.type === 'TIMEOUT' ? 504 : 400).json({ Error: err.type, Message: err.message });
   if (err?.type === 'entity.parse.failed') return res.status(400).json({ Error: 'INVALID_DATA', Message: 'Body is not valid JSON.' });
   console.error(err);
