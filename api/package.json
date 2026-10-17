@@ -2,7 +2,9 @@
   "name": "sec-check-api",
   "version": "1.0.0",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --no-file-parallelism",
+    "test:db": "vitest run test/db.test.ts",
+    "test:api": "vitest run test/api.test.ts",
     "dev": "tsx watch src/coreapi.ts",
     "build": "tsc",
     "start": "node dist/coreapi.js"

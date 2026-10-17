@@ -6,6 +6,10 @@ CREATE TABLE teams (
   created_at     DATETIME(3) NOT NULL
 );
 
+-- Default teams (the web app's settings.json); /reset restores these
+INSERT INTO teams (team_name, created_at) VALUES
+  ('LEGAL', UTC_TIMESTAMP(3)), ('CYBER1', UTC_TIMESTAMP(3)), ('CYBER2', UTC_TIMESTAMP(3));
+
 CREATE TABLE incidents (
   incident_id     VARCHAR(64) PRIMARY KEY,  -- no '_' (used in ticket IDs)
   description     VARCHAR(5000) NOT NULL,
@@ -15,7 +19,12 @@ CREATE TABLE incidents (
   urgency         ENUM('URGENT','NOT_URGENT','UNDECIDED','RESOLVED') NOT NULL DEFAULT 'UNDECIDED',
   reported_at     DATETIME(3) NOT NULL,
   created_at      DATETIME(3) NOT NULL,
-  updated_at      DATETIME(3) NOT NULL
+  updated_at      DATETIME(3) NOT NULL,
+  -- Set when the ingestion worker reported it; ingest_json is its payload, returned on a repeat report
+  source          VARCHAR(32),
+  external_id     VARCHAR(255),
+  ingest_json     JSON,
+  UNIQUE KEY incidents_source (source, external_id)
 );
 
 -- Append-only: an edit inserts a new version. Strong ID = <incident>_<ticket>_<version>
@@ -80,6 +89,14 @@ CREATE TABLE audit_log (
   prev_hash    CHAR(64) NOT NULL,
   hash         CHAR(64) NOT NULL UNIQUE
 );
+
+-- Tip of the audit chain. Appends lock this one row, so concurrent writers queue instead of deadlocking.
+CREATE TABLE audit_head (
+  id   TINYINT PRIMARY KEY,
+  seq  BIGINT UNSIGNED NOT NULL,
+  hash CHAR(64) NOT NULL
+);
+INSERT INTO audit_head VALUES (1, 0, REPEAT('0', 64));
 
 -- Block edits to append-only tables (TRUNCATE for /reset still works)
 CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log FOR EACH ROW
