@@ -4,6 +4,7 @@ Environment variables are the way to configure the Docker container, e.g.
 CORE_API_URL=http://api:3001. Tools that run the Web App with extra settings
 (the test harness in "Web Dev") subclass Settings and pass settings_cls.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,7 +26,9 @@ class Settings:
     core_use_system_proxy: bool = False
     teams: List[str] = field(default_factory=lambda: ["LEGAL", "CYBER1", "CYBER2"])
     users: Dict[str, List[str]] = field(default_factory=dict)
-    hidden_users: List[str] = field(default_factory=list)  # service accounts, not shown in the sign-in picker
+    hidden_users: List[str] = field(
+        default_factory=list
+    )  # service accounts, not shown in the sign-in picker
     decision_teams: List[str] = field(default_factory=list)
     auth_mode: str = "dev"
     log_requests: bool = True

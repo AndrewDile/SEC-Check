@@ -8,6 +8,7 @@
 With a file the request is a POST (the Core API's style) unless --method says
 otherwise; without one it's a GET. Needs nothing but Python 3.9+.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,11 +20,23 @@ import urllib.request
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Send a JSON file as an HTTP request and print the response.")
-    parser.add_argument("url", help="full URL including the path, e.g. http://1.2.3.4:3001/incidents")
-    parser.add_argument("json_file", nargs="?", help="file with the JSON body (omit for a GET without a body)")
+    parser = argparse.ArgumentParser(
+        description="Send a JSON file as an HTTP request and print the response."
+    )
+    parser.add_argument(
+        "url", help="full URL including the path, e.g. http://1.2.3.4:3001/incidents"
+    )
+    parser.add_argument(
+        "json_file", nargs="?", help="file with the JSON body (omit for a GET without a body)"
+    )
     parser.add_argument("--method", help="HTTP method (default: POST with a file, GET without)")
-    parser.add_argument("--header", action="append", default=[], metavar="'Name: value'", help="extra header (repeatable)")
+    parser.add_argument(
+        "--header",
+        action="append",
+        default=[],
+        metavar="'Name: value'",
+        help="extra header (repeatable)",
+    )
     parser.add_argument("--timeout", type=float, default=15, help="seconds to wait (default 15)")
     parser.add_argument("--headers", action="store_true", help="also print the response headers")
     args = parser.parse_args(argv)
@@ -33,7 +46,7 @@ def main(argv=None) -> int:
     if args.json_file:
         try:
             with open(args.json_file, encoding="utf-8") as f:
-                body = json.load(f)          # checks the file is valid JSON before sending
+                body = json.load(f)  # checks the file is valid JSON before sending
         except (OSError, ValueError) as exc:
             print("Can't use %s: %s" % (args.json_file, exc), file=sys.stderr)
             return 2
@@ -57,7 +70,7 @@ def main(argv=None) -> int:
     try:
         resp = urllib.request.urlopen(req, timeout=args.timeout)
     except urllib.error.HTTPError as exc:
-        resp = exc                       # 4xx/5xx still carry a response body
+        resp = exc  # 4xx/5xx still carry a response body
     except (urllib.error.URLError, OSError, ValueError) as exc:
         reason = getattr(exc, "reason", exc)
         print("No response: %s" % reason, file=sys.stderr)

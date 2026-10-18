@@ -9,7 +9,6 @@ import subprocess
 import sys
 import threading
 import unittest
-from http.server import ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -56,7 +55,9 @@ class PortedTests(unittest.TestCase):
 
     def test_ported_tests_pass_against_reference_system(self):
         _, _, r = run_against()
-        self.assertEqual({tid: r[tid]["outcome"] for tid in PORTED}, {tid: "pass" for tid in PORTED})
+        self.assertEqual(
+            {tid: r[tid]["outcome"] for tid in PORTED}, {tid: "pass" for tid in PORTED}
+        )
 
     def test_second_team_claim_is_caught(self):
         _, _, r = run_against("claim-steal")
@@ -78,12 +79,12 @@ class PortedTests(unittest.TestCase):
 
     def test_wrong_status_strings_fail_ported_success_checks(self):
         _, _, r = run_against("wrong-status")
-        self.assertEqual(r["T-53"]["outcome"], "fail")      # no prerequisites, Status checked
-        self.assertEqual(r["T-54"]["outcome"], "pass")      # error envelope unaffected
+        self.assertEqual(r["T-53"]["outcome"], "fail")  # no prerequisites, Status checked
+        self.assertEqual(r["T-54"]["outcome"], "pass")  # error envelope unaffected
 
     def test_crash_on_logs_is_a_system_error(self):
         _, _, r = run_against("crash-logs")
-        self.assertEqual(r["T-49"]["outcome"], "skip")      # needs T-23
+        self.assertEqual(r["T-49"]["outcome"], "skip")  # needs T-23
         self.assertEqual((r["T-25"]["outcome"], r["T-25"]["source"]), ("error", "system"))
 
 
@@ -121,8 +122,10 @@ class TesterBehaviour(unittest.TestCase):
         tester = TesterHarness(request_timeout=1, max_comm_errors=3)
         try:
             _, body = call("POST", tester.url + "/test/setup", {"target_url": target})
-            system.shutdown()                    # set up, then the system disappears
-            status, report = call("POST", tester.url + "/test/run", {"session_id": body["session_id"]})
+            system.shutdown()  # set up, then the system disappears
+            status, report = call(
+                "POST", tester.url + "/test/run", {"session_id": body["session_id"]}
+            )
             self.assertEqual(status, 200)
             results = report["results"]
             comm = [r for r in results if r.get("source") == "communication"]
@@ -139,15 +142,20 @@ class TesterBehaviour(unittest.TestCase):
     def test_bug_in_a_test_function_is_a_tester_error(self):
         def broken(ctx):
             return {}["missing"]
-        suite = [TestCase("X-01", "broken", ("AC-01",), (), broken),
-                 TestCase("X-02", "needs X-01", ("AC-01",), ("X-01",), lambda ctx: "ok")]
+
+        suite = [
+            TestCase("X-01", "broken", ("AC-01",), (), broken),
+            TestCase("X-02", "needs X-01", ("AC-01",), ("X-01",), lambda ctx: "ok"),
+        ]
         system, target = mock_system.start()
         try:
             report, abort = run_suite("run-x", target, settings(), suite=suite)
         finally:
             system.shutdown()
         self.assertIsNone(abort)
-        self.assertEqual((report["results"][0]["outcome"], report["results"][0]["source"]), ("error", "tester"))
+        self.assertEqual(
+            (report["results"][0]["outcome"], report["results"][0]["source"]), ("error", "tester")
+        )
         self.assertEqual(report["results"][1]["outcome"], "skip")
 
     def test_base_path(self):
@@ -156,38 +164,71 @@ class TesterBehaviour(unittest.TestCase):
         try:
             status, body = call("POST", tester.url + "/tester/test/setup", {"target_url": target})
             self.assertEqual(status, 201, body)
-            self.assertEqual(call("POST", tester.url + "/test/setup", {"target_url": target})[0], 404)
+            self.assertEqual(
+                call("POST", tester.url + "/test/setup", {"target_url": target})[0], 404
+            )
         finally:
             tester.close()
             system.shutdown()
 
     def test_target_url_rules(self):
         self.assertEqual(validate_target_url("http://host:8200/"), "http://host:8200")
-        self.assertEqual(validate_target_url("https://team.example.edu/sys"), "https://team.example.edu/sys")
-        for bad in ("", "host:8200", "http://", "http://h/test", "http://h/test/", "http://h?x=1", "http://h#f", 5):
+        self.assertEqual(
+            validate_target_url("https://team.example.edu/sys"), "https://team.example.edu/sys"
+        )
+        for bad in (
+            "",
+            "host:8200",
+            "http://",
+            "http://h/test",
+            "http://h/test/",
+            "http://h?x=1",
+            "http://h#f",
+            5,
+        ):
             with self.assertRaises(ValueError, msg=repr(bad)):
                 validate_target_url(bad)
 
     def test_code_coverage_parsing(self):
-        ok = coverage.code_coverage(200, {"coverage": {"code": {"covered": 40, "total": 50, "basis": "c8 lines"}}})
+        ok = coverage.code_coverage(
+            200, {"coverage": {"code": {"covered": 40, "total": 50, "basis": "c8 lines"}}}
+        )
         self.assertEqual(ok, {"covered": 40, "total": 50, "basis": "c8 lines"})
-        for body in ({}, {"coverage": {}}, {"coverage": {"code": {"covered": 5, "total": 2}}},
-                     {"coverage": {"code": {"covered": "5", "total": 9}}}, {"coverage": {"code": {"covered": True, "total": 9}}}):
+        for body in (
+            {},
+            {"coverage": {}},
+            {"coverage": {"code": {"covered": 5, "total": 2}}},
+            {"coverage": {"code": {"covered": "5", "total": 9}}},
+            {"coverage": {"code": {"covered": True, "total": 9}}},
+        ):
             m = coverage.code_coverage(200, body)
             self.assertEqual((m["covered"], m["total"]), (None, None), body)
             self.assertTrue(m["basis"])
         self.assertIsNone(coverage.code_coverage(404, {})["covered"])
 
     def test_settings_from_env(self):
-        s = Settings.from_env({"TESTER_PORT": "9000", "TESTER_TEAMS": "A, B", "TESTER_SESSION_IN_BODY": "true",
-                               "TESTER_BASE_PATH": "tester/",
-                               "TESTER_DEPENDENCIES_PATH": "dependancies"})
-        self.assertEqual((s.port, s.teams, s.session_in_body, s.base_path, s.dependencies_path),
-                         (9000, ["A", "B"], True, "/tester", "/dependancies"))
+        s = Settings.from_env(
+            {
+                "TESTER_PORT": "9000",
+                "TESTER_TEAMS": "A, B",
+                "TESTER_SESSION_IN_BODY": "true",
+                "TESTER_BASE_PATH": "tester/",
+                "TESTER_DEPENDENCIES_PATH": "dependancies",
+            }
+        )
+        self.assertEqual(
+            (s.port, s.teams, s.session_in_body, s.base_path, s.dependencies_path),
+            (9000, ["A", "B"], True, "/tester", "/dependancies"),
+        )
 
     def test_list_command(self):
-        out = subprocess.run([sys.executable, "-m", "secheck_tester", "--list"], cwd=ROOT,
-                             capture_output=True, text=True, timeout=30)
+        out = subprocess.run(
+            [sys.executable, "-m", "secheck_tester", "--list"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("T-54", out.stdout)
         self.assertIn("54 tests", out.stdout)

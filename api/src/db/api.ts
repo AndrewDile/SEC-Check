@@ -7,7 +7,12 @@ export type Urgency = 'URGENT' | 'NOT_URGENT' | 'UNDECIDED' | 'RESOLVED';
 export type ErrorType = 'UUID_EXISTS' | 'UUID_DNE' | 'INVALID_DATA' | 'DP_EXISTS' | 'DP_DNE' | 'TIMEOUT';
 
 export class DbError extends Error {
-  constructor(public type: ErrorType, message: string) { super(message); }
+  constructor(
+    public type: ErrorType,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 export interface Incident {
@@ -21,11 +26,11 @@ export interface Incident {
   // Set when the ingestion worker reported it; (source, externalId) is unique
   source?: string;
   externalId?: string;
-  ingest?: unknown;          // the worker's payload, returned as-is on a repeat report
+  ingest?: unknown; // the worker's payload, returned as-is on a repeat report
 }
 
 export interface Ticket {
-  ticketId: string;          // strong ID: <incident>_<ticket>_<version>
+  ticketId: string; // strong ID: <incident>_<ticket>_<version>
   incidentId: string;
   ticketNumber: number;
   version: number;
@@ -49,18 +54,27 @@ export interface AuditEntry {
 
 export interface Database {
   // /incidents
-  createIncident(incident: Omit<Incident, 'materiality' | 'severity' | 'urgency'> & Partial<Incident>): Promise<Incident>; // UUID_EXISTS
-  editIncident(incidentId: string, changes: Partial<Omit<Incident, 'incidentId'>>): Promise<Incident>;                    // UUID_DNE
-  getIncident(incidentId: string): Promise<Incident>;                                                                     // UUID_DNE
+  createIncident(
+    incident: Omit<Incident, 'materiality' | 'severity' | 'urgency'> & Partial<Incident>,
+  ): Promise<Incident>; // UUID_EXISTS
+  editIncident(incidentId: string, changes: Partial<Omit<Incident, 'incidentId'>>): Promise<Incident>; // UUID_DNE
+  getIncident(incidentId: string): Promise<Incident>; // UUID_DNE
   listIncidents(): Promise<Incident[]>;
-  findIncidentBySource(source: string, externalId: string): Promise<Incident | undefined>;                                // /ingest/incidents dedupe
+  findIncidentBySource(source: string, externalId: string): Promise<Incident | undefined>; // /ingest/incidents dedupe
 
   // /tickets
-  createTicket(incidentId: string, ticket: { description: string; severity?: Severity; urgency?: Urgency; teams?: string[]; reportedAt: Date }): Promise<Ticket>;
-  editTicket(incidentId: string, ticketNumber: number, changes: { description: string; severity?: Severity; urgency?: Urgency; teams?: string[] }): Promise<Ticket>; // new version
+  createTicket(
+    incidentId: string,
+    ticket: { description: string; severity?: Severity; urgency?: Urgency; teams?: string[]; reportedAt: Date },
+  ): Promise<Ticket>;
+  editTicket(
+    incidentId: string,
+    ticketNumber: number,
+    changes: { description: string; severity?: Severity; urgency?: Urgency; teams?: string[] },
+  ): Promise<Ticket>; // new version
   getTicket(incidentId: string, ticketNumber: number, version?: number): Promise<Ticket>; // latest version unless given
-  listTickets(): Promise<Ticket[]>;                                        // latest version of every ticket, for the web app queue
-  listTicketIds(incidentId: string): Promise<string[]>;                    // all strong IDs, for /logs
+  listTickets(): Promise<Ticket[]>; // latest version of every ticket, for the web app queue
+  listTicketIds(incidentId: string): Promise<string[]>; // all strong IDs, for /logs
 
   // /notifier
   notifyTeams(incidentId: string, ticketNumber: number, teams: string[]): Promise<void>;
@@ -73,7 +87,7 @@ export interface Database {
   // /dependencies
   addDependency(name: string, source?: 'MANUAL' | 'AUTO'): Promise<void>; // DP_EXISTS
   hasDependency(name: string): Promise<boolean>;
-  removeDependency(name: string): Promise<void>;                          // DP_DNE
+  removeDependency(name: string): Promise<void>; // DP_DNE
   listDependencies(): Promise<string[]>;
 
   // /logs

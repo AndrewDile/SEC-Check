@@ -3,6 +3,7 @@
 Core errors pass through unchanged. The Web App adds UNAUTHORIZED, FORBIDDEN and
 UPSTREAM_UNAVAILABLE (Web App API section 3.3).
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager

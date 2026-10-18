@@ -1,4 +1,5 @@
 """Teams (Web App API 4.16) plus session, health and dev-only helpers."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -12,17 +13,27 @@ def list_teams(ctx: Context, req: Request) -> Dict[str, Any]:
     return {"Teams": list(ctx.settings.teams)}
 
 
-@extension("GET", "/session", note="Who is signed in, their teams, and whether they may record decisions")
+@extension(
+    "GET", "/session", note="Who is signed in, their teams, and whether they may record decisions"
+)
 def session(ctx: Context, req: Request) -> Dict[str, Any]:
     return {"User": req.user.name, "Teams": req.user.teams, "Can_Decide": can_decide(ctx, req.user)}
 
 
-@extension("GET", "/dev/users", auth=False, note="Development sign-in list; only when auth_mode is 'dev'")
+@extension(
+    "GET", "/dev/users", auth=False, note="Development sign-in list; only when auth_mode is 'dev'"
+)
 def dev_users(ctx: Context, req: Request) -> Dict[str, Any]:
     if ctx.settings.auth_mode != "dev":
         raise WebAppError("NOT_FOUND", "Not available.")
     hidden = set(ctx.settings.hidden_users)  # service accounts, e.g. the Core API gateway user
-    return {"Users": [{"User": name, "Teams": teams} for name, teams in ctx.settings.users.items() if name not in hidden]}
+    return {
+        "Users": [
+            {"User": name, "Teams": teams}
+            for name, teams in ctx.settings.users.items()
+            if name not in hidden
+        ]
+    }
 
 
 @extension("GET", "/health", auth=False, note="Liveness plus whether the Core API answers")
@@ -34,4 +45,9 @@ def health(ctx: Context, req: Request) -> Dict[str, Any]:
         # Any Core API error reply (even NOT_IMPLEMENTED from an unfinished Core API) means it answered.
         core_ok = exc.error not in ("UPSTREAM_UNAVAILABLE", "TIMEOUT")
         detail = f"{exc.error}: {exc.message}"
-    return {"Status": "OK", "Core_API_URL": ctx.core.base_url, "Core_API_Reachable": core_ok, "Core_API_Detail": detail}
+    return {
+        "Status": "OK",
+        "Core_API_URL": ctx.core.base_url,
+        "Core_API_Reachable": core_ok,
+        "Core_API_Detail": detail,
+    }

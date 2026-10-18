@@ -20,6 +20,7 @@ Bugs, for seeing how the tester reports a faulty system:
   ignore-session     one shared state for every session (X-Session-ID ignored); not a bug
   strict-setup       /test/setup rejects a non-empty setup object (like another pod's system); not a bug
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,8 +31,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
 
-BUGS = ("none", "wrong-status", "no-validation", "crash-logs", "unordered-logs", "setup-fails",
-        "claim-steal", "edit-drops-fields", "log-latest-only", "ignore-session", "strict-setup")
+BUGS = (
+    "none",
+    "wrong-status",
+    "no-validation",
+    "crash-logs",
+    "unordered-logs",
+    "setup-fails",
+    "claim-steal",
+    "edit-drops-fields",
+    "log-latest-only",
+    "ignore-session",
+    "strict-setup",
+)
 MATERIALITY = ["MATERIAL", "IMMATERIAL", "UNDECIDED"]
 SEVERITY = ["HIGH", "MEDIUM", "LOW", "UNDECIDED", "RESOLVED"]
 URGENCY = ["URGENT", "NOT_URGENT", "UNDECIDED", "RESOLVED"]
@@ -53,9 +65,9 @@ class SessionState:
     def __init__(self, teams: List[str]):
         self.teams = list(teams)
         self.incidents: Dict[str, Dict[str, Any]] = {}
-        self.tickets: Dict[str, Dict[str, Any]] = {}     # "<id>_<n>" -> ticket
+        self.tickets: Dict[str, Dict[str, Any]] = {}  # "<id>_<n>" -> ticket
         self.counters: Dict[str, int] = {}
-        self.log: Dict[str, List[str]] = {}               # incident -> strong IDs in action order
+        self.log: Dict[str, List[str]] = {}  # incident -> strong IDs in action order
         self.dependencies: List[str] = []
 
 
@@ -81,11 +93,20 @@ class MockSystem:
                     return self.test_setup(payload)
                 if path == "/test/report" and method == "GET":
                     return self.test_report(parse_qs(parts.query).get("session_id", [""])[0])
-                route = {"/incidents": self.incidents, "/tickets": self.tickets, "/notifier": self.notifier,
-                         "/logs": self.logs, "/dependencies": self.dependencies,
-                         "/dependancies": self.dependencies, "/reset": self.reset}.get(path)
+                route = {
+                    "/incidents": self.incidents,
+                    "/tickets": self.tickets,
+                    "/notifier": self.notifier,
+                    "/logs": self.logs,
+                    "/dependencies": self.dependencies,
+                    "/dependancies": self.dependencies,
+                    "/reset": self.reset,
+                }.get(path)
                 if route is None or method != "POST":
-                    return 404, {"Error": "INVALID_DATA", "Message": "No route %s %s." % (method, path)}
+                    return 404, {
+                        "Error": "INVALID_DATA",
+                        "Message": "No route %s %s." % (method, path),
+                    }
                 if not isinstance(payload, dict):
                     invalid("Request body must be a JSON object.")
                 sid = headers.get("X-Session-ID") or payload.get("session_id") or DEFAULT_SESSION
@@ -103,10 +124,17 @@ class MockSystem:
 
     # ------------------------------------------------------------------ tester interface
     def test_setup(self, payload: Any) -> Tuple[int, Any]:
-        if not isinstance(payload, dict) or not isinstance(payload.get("session_id"), str) or not payload["session_id"]:
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("session_id"), str)
+            or not payload["session_id"]
+        ):
             return 400, {"message": "session_id is required.", "source": "system"}
         if self.bug == "setup-fails":
-            return 500, {"message": "Could not initialize the session database.", "source": "system"}
+            return 500, {
+                "message": "Could not initialize the session database.",
+                "source": "system",
+            }
         if self.bug == "strict-setup" and payload.get("setup") != {}:
             return 400, {"message": "setup must be {}", "source": "system"}
         sid = payload["session_id"]
@@ -123,8 +151,16 @@ class MockSystem:
             return 400, {"message": "session_id is required.", "source": "system"}
         if sid not in self.sessions and self.bug != "ignore-session":
             return 404, {"message": "Unknown session %s." % sid, "source": "system"}
-        return 200, {"session_id": sid, "coverage": {"code": {
-            "covered": None, "total": None, "basis": "The mock system does not measure code coverage."}}}
+        return 200, {
+            "session_id": sid,
+            "coverage": {
+                "code": {
+                    "covered": None,
+                    "total": None,
+                    "basis": "The mock system does not measure code coverage.",
+                }
+            },
+        }
 
     # ------------------------------------------------------------------ validation
     def timestamp(self, value: Any) -> str:
@@ -174,7 +210,9 @@ class MockSystem:
         return rec
 
     @staticmethod
-    def ticket_of(state: SessionState, number: Any, incident_id: Optional[str] = None) -> Dict[str, Any]:
+    def ticket_of(
+        state: SessionState, number: Any, incident_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         text = str(number) if number is not None else ""
         if incident_id is not None and text.isdigit():
             text = "%s_%s" % (incident_id, text)
@@ -190,9 +228,15 @@ class MockSystem:
 
     # ------------------------------------------------------------------ /incidents
     def incident_view(self, rec: Dict[str, Any], status: str) -> Dict[str, Any]:
-        out = {"Incident_ID": rec["Incident_ID"], "Status": self.status(status), "Description": rec["Description"],
-               "Materiality": rec["Materiality"], "Severity": rec["Severity"], "Urgency": rec["Urgency"],
-               "Timestamp": rec["Timestamp"]}
+        out = {
+            "Incident_ID": rec["Incident_ID"],
+            "Status": self.status(status),
+            "Description": rec["Description"],
+            "Materiality": rec["Materiality"],
+            "Severity": rec["Severity"],
+            "Urgency": rec["Urgency"],
+            "Timestamp": rec["Timestamp"],
+        }
         if rec.get("Dependency"):
             out["Dependency"] = rec["Dependency"]
         return out
@@ -203,15 +247,24 @@ class MockSystem:
             invalid("Incident_ID is invalid.")
         ts = self.timestamp(b.get("Timestamp"))
         method = b.get("Method")
-        fields = {"Materiality": self.one_of(b, "Materiality", MATERIALITY),
-                  "Severity": self.one_of(b, "Severity", SEVERITY),
-                  "Urgency": self.one_of(b, "Urgency", URGENCY)}
+        fields = {
+            "Materiality": self.one_of(b, "Materiality", MATERIALITY),
+            "Severity": self.one_of(b, "Severity", SEVERITY),
+            "Urgency": self.one_of(b, "Urgency", URGENCY),
+        }
         dependency = b.get("Dependency", b.get("Dependency_Name"))
         if method == "NEW":
             desc = self.description(b.get("Description"))
             if iid in state.incidents:
-                raise CoreError("UUID_EXISTS", "The provided Incident_ID already exists in the system.")
-            rec = {"Incident_ID": iid, "Description": desc, "Timestamp": ts, "Dependency": dependency or None}
+                raise CoreError(
+                    "UUID_EXISTS", "The provided Incident_ID already exists in the system."
+                )
+            rec = {
+                "Incident_ID": iid,
+                "Description": desc,
+                "Timestamp": ts,
+                "Dependency": dependency or None,
+            }
             rec.update({k: v or "UNDECIDED" for k, v in fields.items()})
             state.incidents[iid] = rec
             state.log[iid] = []
@@ -229,15 +282,27 @@ class MockSystem:
         invalid("Method must be one of NEW, EDIT, GET.")
 
     # ------------------------------------------------------------------ /tickets
-    def ticket_view(self, state: SessionState, ticket: Dict[str, Any], status: str) -> Dict[str, Any]:
+    def ticket_view(
+        self, state: SessionState, ticket: Dict[str, Any], status: str
+    ) -> Dict[str, Any]:
         inc = state.incidents[ticket["Incident_ID"]]
         v = ticket["versions"][-1]
-        out = {"Incident_ID": inc["Incident_ID"], "Ticket_ID": v["Ticket_ID"], "Ticket_number": ticket["number"],
-               "Status": self.status(status), "UUID_Description": inc["Description"],
-               "Ticket_Description": v["Description"], "Materiality_type": inc["Materiality"],
-               "uuid_severity": inc["Severity"], "uuid_urgency": inc["Urgency"],
-               "ticket_severity": v["Severity"], "ticket_urgency": v["Urgency"], "Team_List": list(v["Teams"]),
-               "Ticket_Claim": "CLAIMED" if ticket["claimed_by"] else "UNCLAIMED", "Timestamp": v["Timestamp"]}
+        out = {
+            "Incident_ID": inc["Incident_ID"],
+            "Ticket_ID": v["Ticket_ID"],
+            "Ticket_number": ticket["number"],
+            "Status": self.status(status),
+            "UUID_Description": inc["Description"],
+            "Ticket_Description": v["Description"],
+            "Materiality_type": inc["Materiality"],
+            "uuid_severity": inc["Severity"],
+            "uuid_urgency": inc["Urgency"],
+            "ticket_severity": v["Severity"],
+            "ticket_urgency": v["Urgency"],
+            "Team_List": list(v["Teams"]),
+            "Ticket_Claim": "CLAIMED" if ticket["claimed_by"] else "UNCLAIMED",
+            "Timestamp": v["Timestamp"],
+        }
         if ticket["claimed_by"]:
             out["Claimed_By"] = ticket["claimed_by"]
         return out
@@ -257,9 +322,21 @@ class MockSystem:
             n = state.counters.get(iid, 0) + 1
             state.counters[iid] = n
             number = "%s_%d" % (iid, n)
-            version = {"Ticket_ID": number + "_1", "Description": desc, "Timestamp": ts,
-                       "Severity": severity or "UNDECIDED", "Urgency": urgency or "UNDECIDED", "Teams": teams or []}
-            ticket = {"Incident_ID": iid, "number": number, "versions": [version], "claimed_by": None, "notified": []}
+            version = {
+                "Ticket_ID": number + "_1",
+                "Description": desc,
+                "Timestamp": ts,
+                "Severity": severity or "UNDECIDED",
+                "Urgency": urgency or "UNDECIDED",
+                "Teams": teams or [],
+            }
+            ticket = {
+                "Incident_ID": iid,
+                "number": number,
+                "versions": [version],
+                "claimed_by": None,
+                "notified": [],
+            }
             state.tickets[number] = ticket
             state.log[iid].append(version["Ticket_ID"])
             return self.ticket_view(state, ticket, "Logged")
@@ -269,9 +346,14 @@ class MockSystem:
             prev = ticket["versions"][-1]
             if self.bug == "edit-drops-fields":
                 prev = {"Severity": "UNDECIDED", "Urgency": "UNDECIDED", "Teams": []}
-            version = {"Ticket_ID": "%s_%d" % (ticket["number"], len(ticket["versions"]) + 1), "Description": desc,
-                       "Timestamp": ts, "Severity": severity or prev["Severity"], "Urgency": urgency or prev["Urgency"],
-                       "Teams": teams if teams is not None else prev["Teams"]}
+            version = {
+                "Ticket_ID": "%s_%d" % (ticket["number"], len(ticket["versions"]) + 1),
+                "Description": desc,
+                "Timestamp": ts,
+                "Severity": severity or prev["Severity"],
+                "Urgency": urgency or prev["Urgency"],
+                "Teams": teams if teams is not None else prev["Teams"],
+            }
             ticket["versions"].append(version)
             state.log[iid].append(version["Ticket_ID"])
             return self.ticket_view(state, ticket, "Edited")
@@ -290,7 +372,11 @@ class MockSystem:
         if method == "CLAIM":
             if len(teams) != 1:
                 invalid("CLAIM takes exactly one team.")
-            if ticket["claimed_by"] and ticket["claimed_by"] != teams[0] and self.bug != "claim-steal":
+            if (
+                ticket["claimed_by"]
+                and ticket["claimed_by"] != teams[0]
+                and self.bug != "claim-steal"
+            ):
                 invalid("Ticket is already claimed by %s." % ticket["claimed_by"])
             ticket["claimed_by"] = teams[0]
             status = "Claimed ticket"
@@ -298,7 +384,11 @@ class MockSystem:
             ticket["notified"].extend(teams)
             status = "Notified team"
         iid = ticket["Incident_ID"]
-        return {"UUID": int(iid) if iid.isdigit() else iid, "Ticket_Number": ticket["number"], "Status": self.status(status)}
+        return {
+            "UUID": int(iid) if iid.isdigit() else iid,
+            "Ticket_Number": ticket["number"],
+            "Status": self.status(status),
+        }
 
     # ------------------------------------------------------------------ /logs
     def logs(self, state: SessionState, b: Dict[str, Any]) -> Dict[str, Any]:
@@ -314,9 +404,15 @@ class MockSystem:
             for entry in entries:
                 latest[entry.rpartition("_")[0]] = entry
             entries = [e for e in entries if latest[e.rpartition("_")[0]] == e]
-        return {"Incident_ID": rec["Incident_ID"], "Description": rec["Description"],
-                "Materiality_type": rec["Materiality"], "Severity": rec["Severity"], "Urgency": rec["Urgency"],
-                "Ticket_ID_List": entries, "Status": self.status("Log Retrieved")}
+        return {
+            "Incident_ID": rec["Incident_ID"],
+            "Description": rec["Description"],
+            "Materiality_type": rec["Materiality"],
+            "Severity": rec["Severity"],
+            "Urgency": rec["Urgency"],
+            "Ticket_ID_List": entries,
+            "Status": self.status("Log Retrieved"),
+        }
 
     # ------------------------------------------------------------------ /dependencies
     def dependencies(self, state: SessionState, b: Dict[str, Any]) -> Dict[str, Any]:
@@ -329,7 +425,10 @@ class MockSystem:
             state.dependencies.append(name)
             return {"dp_name": name, "status": self.status("Added")}
         if method == "MATCH":
-            return {"dp_name": name, "status": self.status("Exists" if name in state.dependencies else "Does not Exist")}
+            return {
+                "dp_name": name,
+                "status": self.status("Exists" if name in state.dependencies else "Does not Exist"),
+            }
         if method == "REMOVE":
             if name not in state.dependencies:
                 raise CoreError("DP_DNE", "The dependency name does not exist in the system.")
@@ -390,7 +489,9 @@ def start(port: int = 0, bug: str = "none", host: str = "127.0.0.1"):
 
 
 def main(argv=None) -> None:
-    parser = argparse.ArgumentParser(description="In-memory SEC-Check reference system for the tester.")
+    parser = argparse.ArgumentParser(
+        description="In-memory SEC-Check reference system for the tester."
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8200)
     parser.add_argument("--bug", choices=BUGS, default="none")
@@ -399,7 +500,10 @@ def main(argv=None) -> None:
     system = MockSystem(args.bug)
     system.verbose = args.verbose
     httpd = ThreadingHTTPServer((args.host, args.port), make_handler(system))
-    print("Mock SEC-Check system on http://%s:%d (bug: %s)" % (args.host, args.port, args.bug), flush=True)
+    print(
+        "Mock SEC-Check system on http://%s:%d (bug: %s)" % (args.host, args.port, args.bug),
+        flush=True,
+    )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

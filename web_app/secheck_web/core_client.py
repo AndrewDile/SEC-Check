@@ -12,6 +12,7 @@ Calls marked EXTENSION use Method "LIST", which the Core API does not define
 yet (gap G-5). The mock Core API supports them; a real Core API will reject
 them until it adds list operations.
 """
+
 from __future__ import annotations
 
 import json
@@ -69,13 +70,19 @@ class CoreClient:
         self.observers: List[Callable[[str, Dict[str, Any], int, Any], None]] = []
 
     # ------------------------------------------------------------------ transport
-    def _post(self, path: str, body: Dict[str, Any], steps: Optional[List[str]] = None) -> Dict[str, Any]:
+    def _post(
+        self, path: str, body: Dict[str, Any], steps: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         data = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             self.base_url + path,
             data=data,
             method="POST",
-            headers={"Content-Type": "application/json", "Accept": "application/json", ORIGIN_HEADER: ORIGIN_WEBAPP},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                ORIGIN_HEADER: ORIGIN_WEBAPP,
+            },
         )
         try:
             with self._opener.open(request, timeout=self.timeout) as resp:
@@ -86,14 +93,18 @@ class CoreClient:
             raise WebAppError("TIMEOUT", "The Core API did not respond in time.", core_path=path)
         except urllib.error.URLError as exc:
             if isinstance(exc.reason, (socket.timeout, TimeoutError)):
-                raise WebAppError("TIMEOUT", "The Core API did not respond in time.", core_path=path)
+                raise WebAppError(
+                    "TIMEOUT", "The Core API did not respond in time.", core_path=path
+                )
             raise WebAppError(
                 "UPSTREAM_UNAVAILABLE",
                 f"Cannot reach the Core API at {self.base_url} ({exc.reason}).",
                 core_path=path,
             )
         except OSError as exc:
-            raise WebAppError("UPSTREAM_UNAVAILABLE", f"Cannot reach the Core API: {exc}", core_path=path)
+            raise WebAppError(
+                "UPSTREAM_UNAVAILABLE", f"Cannot reach the Core API: {exc}", core_path=path
+            )
 
         try:
             payload = json.loads(raw.decode("utf-8")) if raw else {}
@@ -102,15 +113,25 @@ class CoreClient:
         for observer in self.observers:
             observer(path, body, status, payload)
         if payload is None:
-            raise WebAppError("UPSTREAM_UNAVAILABLE", f"Core API returned a non-JSON response (HTTP {status}).", core_path=path)
+            raise WebAppError(
+                "UPSTREAM_UNAVAILABLE",
+                f"Core API returned a non-JSON response (HTTP {status}).",
+                core_path=path,
+            )
         if status == 200:
             if steps is not None:
                 steps.append(f"{path} {body.get('Method') or body.get('method')}")
             return payload
         if isinstance(payload, dict) and "Error" in payload:
             error = str(payload["Error"])
-            raise WebAppError(error, str(payload.get("Message", "")), status=status_for(error), core_path=path)
-        raise WebAppError("UPSTREAM_UNAVAILABLE", f"Core API returned HTTP {status} without an error body.", core_path=path)
+            raise WebAppError(
+                error, str(payload.get("Message", "")), status=status_for(error), core_path=path
+            )
+        raise WebAppError(
+            "UPSTREAM_UNAVAILABLE",
+            f"Core API returned HTTP {status} without an error body.",
+            core_path=path,
+        )
 
     # ------------------------------------------------------------------ incidents
     @staticmethod
@@ -126,8 +147,18 @@ class CoreClient:
             out.pop("Dependency_Name", None)
         return out
 
-    def incident_new(self, steps, *, incident_id, description, timestamp=None, dependency=None,
-                     materiality="UNDECIDED", severity="UNDECIDED", urgency="UNDECIDED") -> Dict[str, Any]:
+    def incident_new(
+        self,
+        steps,
+        *,
+        incident_id,
+        description,
+        timestamp=None,
+        dependency=None,
+        materiality="UNDECIDED",
+        severity="UNDECIDED",
+        urgency="UNDECIDED",
+    ) -> Dict[str, Any]:
         body = {
             "Incident_ID": incident_id,
             "Method": "NEW",
@@ -143,11 +174,25 @@ class CoreClient:
 
     def incident_get(self, steps, incident_id: str) -> Dict[str, Any]:
         # Core requires Description on every Method, including GET (gap G-10).
-        body = {"Incident_ID": incident_id, "Method": "GET", "Timestamp": self.clock(), "Description": ""}
+        body = {
+            "Incident_ID": incident_id,
+            "Method": "GET",
+            "Timestamp": self.clock(),
+            "Description": "",
+        }
         return self._incident_out(self._post(PATH_INCIDENTS, body, steps))
 
-    def incident_edit(self, steps, *, incident_id, description, dependency=None,
-                      materiality=None, severity=None, urgency=None) -> Dict[str, Any]:
+    def incident_edit(
+        self,
+        steps,
+        *,
+        incident_id,
+        description,
+        dependency=None,
+        materiality=None,
+        severity=None,
+        urgency=None,
+    ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "Incident_ID": incident_id,
             "Method": "EDIT",
@@ -156,7 +201,11 @@ class CoreClient:
         }
         if dependency is not None:
             body["Dependency"] = dependency
-        for key, value in (("Materiality", materiality), ("Severity", severity), ("Urgency", urgency)):
+        for key, value in (
+            ("Materiality", materiality),
+            ("Severity", severity),
+            ("Urgency", urgency),
+        ):
             if value is not None:
                 body[key] = value
         return self._incident_out(self._post(PATH_INCIDENTS, body, steps))
@@ -174,8 +223,17 @@ class CoreClient:
             out["Incident_ID"] = str(out["Incident_ID"])
         return out
 
-    def ticket_new(self, steps, *, incident_id, description, severity=None, urgency=None,
-                   team_list=None, timestamp=None) -> Dict[str, Any]:
+    def ticket_new(
+        self,
+        steps,
+        *,
+        incident_id,
+        description,
+        severity=None,
+        urgency=None,
+        team_list=None,
+        timestamp=None,
+    ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "Incident_ID": incident_id,
             "Method": "NEW",
@@ -190,7 +248,12 @@ class CoreClient:
         return self._ticket_out(self._post(PATH_TICKETS, body, steps))
 
     def ticket_get(self, steps, *, incident_id, ticket_number) -> Dict[str, Any]:
-        body = {"Incident_ID": incident_id, "Method": "GET", "Timestamp": self.clock(), "Ticket_number": ticket_number}
+        body = {
+            "Incident_ID": incident_id,
+            "Method": "GET",
+            "Timestamp": self.clock(),
+            "Ticket_number": ticket_number,
+        }
         return self._ticket_out(self._post(PATH_TICKETS, body, steps))
 
     def ticket_get_version(self, steps, *, incident_id, ticket_id) -> Dict[str, Any]:
@@ -200,11 +263,25 @@ class CoreClient:
         for a version id is the fix proposed for gap G-7. Same request shape: the id
         goes in Ticket_number.
         """
-        body = {"Incident_ID": incident_id, "Method": "GET", "Timestamp": self.clock(), "Ticket_number": ticket_id}
+        body = {
+            "Incident_ID": incident_id,
+            "Method": "GET",
+            "Timestamp": self.clock(),
+            "Ticket_number": ticket_id,
+        }
         return self._ticket_out(self._post(PATH_TICKETS, body, steps))
 
-    def ticket_edit(self, steps, *, incident_id, ticket_number, description, severity=None,
-                    urgency=None, team_list=None) -> Dict[str, Any]:
+    def ticket_edit(
+        self,
+        steps,
+        *,
+        incident_id,
+        ticket_number,
+        description,
+        severity=None,
+        urgency=None,
+        team_list=None,
+    ) -> Dict[str, Any]:
         # Core EDIT has no way to say which ticket; we send Ticket_number (gap G-4).
         body: Dict[str, Any] = {
             "Incident_ID": incident_id,
@@ -249,7 +326,9 @@ class CoreClient:
 
     # ------------------------------------------------------------------ logs
     def logs(self, steps, incident_id: str) -> Dict[str, Any]:
-        data = dict(self._post(PATH_LOGS, {"Incident_ID": incident_id, "Timestamp": self.clock()}, steps))
+        data = dict(
+            self._post(PATH_LOGS, {"Incident_ID": incident_id, "Timestamp": self.clock()}, steps)
+        )
         data["Incident_ID"] = str(data.get("Incident_ID", incident_id))
         data["Ticket_ID_List"] = normalize_ticket_id_list(data.get("Ticket_ID_List"))
         return data

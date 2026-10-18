@@ -1,4 +1,5 @@
 """Incident intake, info, edit, decision, log and 8-K view (Web App API 4.1-4.5, 4.13, 4.14)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -22,7 +23,9 @@ def _present(d: Dict[str, Any]) -> Dict[str, Any]:
 def ensure_dependency_exists(ctx: Context, name: str, steps: List[str]) -> None:
     result = ctx.core.dp_match(steps, name)
     if not ctx.core.dp_exists(result):
-        raise WebAppError("DP_DNE", "The dependency name does not exist in the system.", core_path="/dependencies")
+        raise WebAppError(
+            "DP_DNE", "The dependency name does not exist in the system.", core_path="/dependencies"
+        )
 
 
 def discovery_timestamp(ctx: Context, value: Any) -> str:
@@ -64,7 +67,9 @@ def create_incident(ctx: Context, req: Request) -> Dict[str, Any]:
                 if generated and exc.error == "UUID_EXISTS" and attempt < 4:
                     continue  # generated id collided; try another
                 raise
-        intake = ctx.core.ticket_new(steps, incident_id=incident_id, description=audit.intake_text(req.user.name))
+        intake = ctx.core.ticket_new(
+            steps, incident_id=incident_id, description=audit.intake_text(req.user.name)
+        )
     out = dict(created)
     if dependency:
         out.setdefault("Dependency_Name", dependency)
@@ -82,7 +87,12 @@ def list_incidents(ctx: Context, req: Request) -> Dict[str, Any]:
     page = req.query.get("page", 1)
     size = req.query.get("page_size", 25)
     start = (page - 1) * size
-    return {"Incidents": items[start:start + size], "page": page, "page_size": size, "total": len(items)}
+    return {
+        "Incidents": items[start : start + size],
+        "page": page,
+        "page_size": size,
+        "total": len(items),
+    }
 
 
 @operation("getIncident")
@@ -110,7 +120,9 @@ def edit_incident(ctx: Context, req: Request) -> Dict[str, Any]:
             dependency=dependency,
         )
         ticket = ctx.core.ticket_new(
-            steps, incident_id=incident_id, description=audit.edit_text(sorted(body.keys()), req.user.name)
+            steps,
+            incident_id=incident_id,
+            description=audit.edit_text(sorted(body.keys()), req.user.name),
         )
     out = dict(edited)
     out["Audit_Ticket_ID"] = ticket.get("Ticket_ID")
@@ -140,14 +152,24 @@ def record_decision(ctx: Context, req: Request) -> Dict[str, Any]:
         ticket = ctx.core.ticket_new(
             steps,
             incident_id=incident_id,
-            description=audit.decision_text(req.user.name, new["Materiality"], new["Severity"], new["Urgency"], body["Rationale"]),
+            description=audit.decision_text(
+                req.user.name,
+                new["Materiality"],
+                new["Severity"],
+                new["Urgency"],
+                body["Rationale"],
+            ),
             severity=new["Severity"],
             urgency=new["Urgency"],
             timestamp=determined_at,
         )
         notified: List[str] = []
         if body.get("Materiality") == "MATERIAL" and current.get("Materiality") != "MATERIAL":
-            ctx.core.notify(steps, team_names=ctx.settings.teams, ticket_number=weak_ticket_id(ticket["Ticket_ID"]))
+            ctx.core.notify(
+                steps,
+                team_names=ctx.settings.teams,
+                ticket_number=weak_ticket_id(ticket["Ticket_ID"]),
+            )
             notified = list(ctx.settings.teams)
     return {
         "Incident_ID": incident_id,
@@ -202,25 +224,34 @@ def get_form_8k_view(ctx: Context, req: Request) -> Dict[str, Any]:
         "Status": "8-K View Assembled",
         "Item_1_05": {
             "Nature": nature,
-            "Scope": _present({
-                "Severity": incident.get("Severity"),
-                "Dependency_Name": incident.get("Dependency_Name"),
-                "Teams_Involved": teams,
-            }),
-            "Timing": _present({
-                "Discovered_At": incident.get("Timestamp"),
-                "Determined_At": determined_at,
-                "Events": [
-                    _present({
-                        "Ticket_ID": t.get("Ticket_ID"),
-                        "Timestamp": t.get("Timestamp"),
-                        "Summary": (t.get("Ticket_Description") or "")[:300],
-                    })
-                    for t in tickets_by_time
-                ],
-            }),
+            "Scope": _present(
+                {
+                    "Severity": incident.get("Severity"),
+                    "Dependency_Name": incident.get("Dependency_Name"),
+                    "Teams_Involved": teams,
+                }
+            ),
+            "Timing": _present(
+                {
+                    "Discovered_At": incident.get("Timestamp"),
+                    "Determined_At": determined_at,
+                    "Events": [
+                        _present(
+                            {
+                                "Ticket_ID": t.get("Ticket_ID"),
+                                "Timestamp": t.get("Timestamp"),
+                                "Summary": (t.get("Ticket_Description") or "")[:300],
+                            }
+                        )
+                        for t in tickets_by_time
+                    ],
+                }
+            ),
             "Material_Impact": "\n\n".join(d["Rationale"] for _, d in material),
         },
-        "Filing": {**_present({"Determined_At": determined_at}), "Filing_Deadline": None},  # deadline: gap G-8
+        "Filing": {
+            **_present({"Determined_At": determined_at}),
+            "Filing_Deadline": None,
+        },  # deadline: gap G-8
         "Source_Tickets": ticket_ids,
     }

@@ -1,6 +1,6 @@
 """End-to-end checks of the tester against the mock system.
 
-    python -m unittest discover -s tests -v
+python -m unittest discover -s tests -v
 """
 
 import json
@@ -27,7 +27,9 @@ SOURCES = {"tester", "system", "communication", "unknown"}
 
 def call(method, url, body=None):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        url, data=data, method=method, headers={"Content-Type": "application/json"}
+    )
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return r.status, json.loads(r.read())
@@ -37,7 +39,9 @@ def call(method, url, body=None):
 
 class TesterHarness:
     def __init__(self, **overrides):
-        settings = Settings(host="127.0.0.1", port=0, request_timeout=3, setup_timeout=5, run_budget=60)
+        settings = Settings(
+            host="127.0.0.1", port=0, request_timeout=3, setup_timeout=5, run_budget=60
+        )
         for k, v in overrides.items():
             setattr(settings, k, v)
         self.app = TesterApp(settings)
@@ -55,7 +59,9 @@ class ReportShape:
         self.assertEqual(report["session_id"], session_id)
         self.assertEqual(report["target_url"], target)
         ids = [r["test_id"] for r in report["results"]]
-        self.assertEqual(ids, [c.test_id for c in SUITE], "every planned test exactly once, in order")
+        self.assertEqual(
+            ids, [c.test_id for c in SUITE], "every planned test exactly once, in order"
+        )
         for r in report["results"]:
             self.assertIn(r["outcome"], OUTCOMES)
             self.assertTrue(r["message"])
@@ -121,7 +127,9 @@ class HappyPath(unittest.TestCase, ReportShape):
     def test_invalid_requests(self):
         u = self.tester.url
         self.assertEqual(call("POST", u + "/test/setup", {"target_url": "ftp://x"})[0], 400)
-        self.assertEqual(call("POST", u + "/test/setup", {"target_url": self.target + "/test"})[0], 400)
+        self.assertEqual(
+            call("POST", u + "/test/setup", {"target_url": self.target + "/test"})[0], 400
+        )
         self.assertEqual(call("POST", u + "/test/setup", {"target_url": "http://u:p@host"})[0], 400)
         self.assertEqual(call("POST", u + "/test/run", {})[0], 400)
         self.assertEqual(call("POST", u + "/test/run", {"session_id": "run-nope"})[0], 404)
@@ -156,12 +164,16 @@ class FaultySystems(unittest.TestCase, ReportShape):
     def test_setup_failure_is_forwarded(self):
         status, body = self.run_against("setup-fails")
         self.assertEqual(status, 500)
-        self.assertEqual(body, {"message": "Could not initialize the session database.", "source": "system"})
+        self.assertEqual(
+            body, {"message": "Could not initialize the session database.", "source": "system"}
+        )
 
     def test_unreachable_target(self):
         tester = TesterHarness()
         try:
-            status, body = call("POST", tester.url + "/test/setup", {"target_url": "http://127.0.0.1:9"})
+            status, body = call(
+                "POST", tester.url + "/test/setup", {"target_url": "http://127.0.0.1:9"}
+            )
             self.assertEqual(status, 500)
             self.assertEqual(body["source"], "communication")
         finally:
@@ -173,8 +185,8 @@ class FaultySystems(unittest.TestCase, ReportShape):
         r = self.outcomes(report)
         self.assertEqual(r["T-01"]["outcome"], "fail")
         self.assertIn("Status", r["T-01"]["message"])
-        self.assertEqual(r["T-02"]["outcome"], "skip")      # prerequisite failed
-        self.assertEqual(r["T-04"]["outcome"], "pass")      # expected errors still pass
+        self.assertEqual(r["T-02"]["outcome"], "skip")  # prerequisite failed
+        self.assertEqual(r["T-04"]["outcome"], "pass")  # expected errors still pass
 
     def test_missing_validation_fails_boundary_tests(self):
         _, report = self.run_against("no-validation")
@@ -197,7 +209,7 @@ class FaultySystems(unittest.TestCase, ReportShape):
 
     def test_abort_stores_partial_report(self):
         system, target = mock_system.start()
-        tester = TesterHarness(run_budget=0)   # aborts before the first test
+        tester = TesterHarness(run_budget=0)  # aborts before the first test
         try:
             _, body = call("POST", tester.url + "/test/setup", {"target_url": target})
             sid = body["session_id"]

@@ -6,6 +6,7 @@ Routes come from contracts/webapp_api.json. For every spec operation the app:
      spec (any failure -> 400 INVALID_DATA),
   3. calls the handler registered under the operation's operationId.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,7 +26,12 @@ SESSION_COOKIE = "secheck_session"  # matches securitySchemes.sessionCookie in t
 
 
 class WebApp:
-    def __init__(self, settings: Settings, core: Optional[CoreClient] = None, context: Optional[Context] = None):
+    def __init__(
+        self,
+        settings: Settings,
+        core: Optional[CoreClient] = None,
+        context: Optional[Context] = None,
+    ):
         self.settings = settings
         self.log_requests = settings.log_requests
         self.spec = Spec.load(settings.webapp_contract)
@@ -50,9 +56,13 @@ class WebApp:
                 handler = _not_implemented(op_id)
             else:
                 used.add(op_id)
-            self.router.add(method, self.base + path, handler, op=op, path_item=item, auth=True, spec=True)
+            self.router.add(
+                method, self.base + path, handler, op=op, path_item=item, auth=True, spec=True
+            )
         for ext in EXTENSIONS:
-            self.router.add(ext["method"], self.base + ext["path"], ext["handler"], auth=ext["auth"], spec=False)
+            self.router.add(
+                ext["method"], self.base + ext["path"], ext["handler"], auth=ext["auth"], spec=False
+            )
         self.unused_handlers = sorted(set(OPERATIONS) - used)
 
     def describe_routes(self) -> List[str]:
@@ -71,8 +81,10 @@ class WebApp:
         if method in ("GET", "HEAD") and (path == "/app" or path.startswith("/app/")):
             if path == "/app":
                 return redirect("/app/")
-            found = static_file(self.settings.static_dir, path[len("/app/"):] or "index.html")
-            return found or json_response(404, {"Error": "NOT_FOUND", "Message": f"No file at {path}."})
+            found = static_file(self.settings.static_dir, path[len("/app/") :] or "index.html")
+            return found or json_response(
+                404, {"Error": "NOT_FOUND", "Message": f"No file at {path}."}
+            )
         if method == "GET" and path == "/openapi.json":
             return json_response(200, self.spec.doc)
         if method == "GET" and path == "/docs":
@@ -100,12 +112,20 @@ class WebApp:
             return json_response(exc.status, exc.to_body())
         except Exception:
             traceback.print_exc(file=sys.stderr)
-            return json_response(500, {"Error": "INTERNAL_ERROR", "Message": "Unexpected server error; see the server log."})
+            return json_response(
+                500,
+                {
+                    "Error": "INTERNAL_ERROR",
+                    "Message": "Unexpected server error; see the server log.",
+                },
+            )
 
     # ------------------------------------------------------------------ helpers
     def _authenticate(self, headers: Any) -> User:
         """Development auth: X-User header or secheck_session cookie (auth is TBD, gap G-6)."""
-        name = (headers.get("X-User") if headers else None) or parse_cookies(headers.get("Cookie") if headers else None).get(SESSION_COOKIE)
+        name = (headers.get("X-User") if headers else None) or parse_cookies(
+            headers.get("Cookie") if headers else None
+        ).get(SESSION_COOKIE)
         if not name:
             raise WebAppError("UNAUTHORIZED", "Sign in to continue.")
         if name not in self.settings.users:
@@ -121,7 +141,9 @@ class WebApp:
         except (ValueError, UnicodeDecodeError):
             raise invalid("Request body is not valid JSON.")
 
-    def _validate(self, op: Dict[str, Any], path_item: Dict[str, Any], req: Request, raw_query: str) -> None:
+    def _validate(
+        self, op: Dict[str, Any], path_item: Dict[str, Any], req: Request, raw_query: str
+    ) -> None:
         errors: List[str] = []
         query = parse_qs(raw_query, keep_blank_values=False)
         for param in self.spec.parameters(op, path_item):
@@ -151,5 +173,8 @@ class WebApp:
 
 def _not_implemented(op_id: str):
     def handler(ctx: Context, req: Request):
-        raise WebAppError("NOT_IMPLEMENTED", f"Operation {op_id} is in the spec but has no handler yet.")
+        raise WebAppError(
+            "NOT_IMPLEMENTED", f"Operation {op_id} is in the spec but has no handler yet."
+        )
+
     return handler

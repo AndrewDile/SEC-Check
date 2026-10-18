@@ -1,4 +1,5 @@
 """Tickets, claim, notify and team queue (Web App API 4.6-4.12)."""
+
 from __future__ import annotations
 
 import re
@@ -7,7 +8,14 @@ from typing import Any, Dict, List, Optional
 from .. import audit
 from ..core_client import weak_ticket_id
 from ..errors import WebAppError, invalid, tracked
-from . import Context, Request, extension, operation, require_known_teams, require_ticket_of_incident
+from . import (
+    Context,
+    Request,
+    extension,
+    operation,
+    require_known_teams,
+    require_ticket_of_incident,
+)
 
 
 @operation("listIncidentTickets")
@@ -21,7 +29,9 @@ def list_incident_tickets(ctx: Context, req: Request) -> Dict[str, Any]:
             weak = weak_ticket_id(tid)
             if weak not in numbers:
                 numbers.append(weak)
-        out["Tickets"] = [ctx.core.ticket_get(None, incident_id=incident_id, ticket_number=n) for n in numbers]
+        out["Tickets"] = [
+            ctx.core.ticket_get(None, incident_id=incident_id, ticket_number=n) for n in numbers
+        ]
     return out
 
 
@@ -43,7 +53,9 @@ def create_ticket(ctx: Context, req: Request) -> Dict[str, Any]:
         )
         notified: List[str] = []
         if body.get("Notify", True) and teams:
-            ctx.core.notify(steps, team_names=teams, ticket_number=weak_ticket_id(ticket["Ticket_ID"]))
+            ctx.core.notify(
+                steps, team_names=teams, ticket_number=weak_ticket_id(ticket["Ticket_ID"])
+            )
             notified = list(teams)
     out = dict(ticket)
     out["Notified_Teams"] = notified
@@ -100,7 +112,11 @@ def get_queue(ctx: Context, req: Request) -> Dict[str, Any]:
         raise invalid("team is required.")
     require_known_teams(ctx, [team], "team")
     claim = req.query.get("claim") or "UNCLAIMED"
-    return {"Team": team, "Claim": claim, "Tickets": ctx.core.ticket_list(None, team=team, claim=claim)}
+    return {
+        "Team": team,
+        "Claim": claim,
+        "Tickets": ctx.core.ticket_list(None, team=team, claim=claim),
+    }
 
 
 # ---------------------------------------------------------------- full log with details
@@ -115,8 +131,11 @@ def _entry_type(description: Optional[str]) -> str:
     return "TICKET"
 
 
-@extension("GET", "/incidents/{Incident_ID}/log/entries",
-           note="PROPOSED: every log entry (ticket version) with its details; uses Core GET by version id (gap G-7)")
+@extension(
+    "GET",
+    "/incidents/{Incident_ID}/log/entries",
+    note="PROPOSED: every log entry (ticket version) with its details; uses Core GET by version id (gap G-7)",
+)
 def log_entries(ctx: Context, req: Request) -> Dict[str, Any]:
     """Every entry in the incident log, oldest first, with what that version recorded.
 
@@ -134,8 +153,11 @@ def log_entries(ctx: Context, req: Request) -> Dict[str, Any]:
     for ticket_id in log["Ticket_ID_List"]:
         number = weak_ticket_id(ticket_id)
         version = ticket_id.rsplit("_", 1)[-1]
-        entry: Dict[str, Any] = {"Ticket_ID": ticket_id, "Ticket_number": number,
-                                 "Version": int(version) if version.isdigit() else None}
+        entry: Dict[str, Any] = {
+            "Ticket_ID": ticket_id,
+            "Ticket_number": number,
+            "Version": int(version) if version.isdigit() else None,
+        }
         data: Optional[Dict[str, Any]] = None
         try:
             data = ctx.core.ticket_get_version(None, incident_id=incident_id, ticket_id=ticket_id)
@@ -144,7 +166,9 @@ def log_entries(ctx: Context, req: Request) -> Dict[str, Any]:
                 raise
         if data is None or data.get("Ticket_ID") != ticket_id:
             if number not in latest:
-                latest[number] = ctx.core.ticket_get(None, incident_id=incident_id, ticket_number=number)
+                latest[number] = ctx.core.ticket_get(
+                    None, incident_id=incident_id, ticket_number=number
+                )
             data = latest[number] if latest[number].get("Ticket_ID") == ticket_id else None
         if data is None:
             entry["Details_Available"] = False
@@ -154,4 +178,3 @@ def log_entries(ctx: Context, req: Request) -> Dict[str, Any]:
             entry["Entry_Type"] = _entry_type(data.get("Ticket_Description"))
         entries.append(entry)
     return {"Incident_ID": incident_id, "Entries": entries, "Status": "Log Entries Retrieved"}
-

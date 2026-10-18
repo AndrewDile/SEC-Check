@@ -27,7 +27,7 @@ export function testingRouter(wipe: () => Promise<void>): express.Router {
     }
     const run = setupQueue.then(async () => {
       if (sessionId === activeSession) return 409;
-      activeSession = undefined;   // the old session ends as soon as its data is wiped
+      activeSession = undefined; // the old session ends as soon as its data is wiped
       await wipe();
       activeSession = sessionId;
       return 201;
@@ -45,7 +45,8 @@ export function testingRouter(wipe: () => Promise<void>): express.Router {
 
   router.get('/test/report', (req, res) => {
     const sessionId = req.query.session_id;
-    if (typeof sessionId !== 'string' || !sessionId) return testError(res, 400, 'The session_id query parameter is required.');
+    if (typeof sessionId !== 'string' || !sessionId)
+      return testError(res, 400, 'The session_id query parameter is required.');
     if (sessionId !== activeSession) return testError(res, 404, `Unknown session ${sessionId}.`);
     res.json({
       session_id: sessionId,

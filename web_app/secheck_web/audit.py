@@ -4,6 +4,7 @@ The Core API has no actor field (gap G-6), so the acting user is written into
 the ticket Description. The formats live here so they can change in one place,
 and so the 8-K view can read decision tickets back.
 """
+
 from __future__ import annotations
 
 import re
