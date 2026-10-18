@@ -16,7 +16,7 @@ services:
       NOTIF_CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       NOTIF_INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
     ports:
-      - "127.0.0.1:3001:3001"
+      - "3001:3001" # Made core API port public
     depends_on:
       db:
         condition: service_healthy
@@ -55,7 +55,7 @@ services:
     environment:
       TESTER_PORT: 8100
     ports:
-      - "127.0.0.1:8100:8100"   # local only: the tester sends requests to any URL it's given
+      - "8100:8100"   # Made tester port public
     depends_on:
       - api
     restart: unless-stopped
