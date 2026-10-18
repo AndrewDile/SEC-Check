@@ -1,4 +1,17 @@
 services:
+  caddy:   # the only public port; see Caddyfile for which path goes where
+    image: caddy:2.10
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - api
+      - web_app
+      - tester
+    restart: unless-stopped
+
   api:
     build: ./api
     environment:
@@ -9,14 +22,12 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       WORKER_URL: http://ingestion-worker:8002
       NOTIFIER_URL: http://notification-service:8001
-      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:8000}   # for claim links in notifications
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost}   # for claim links in notifications
       # Tokens the services send us, and the ones we send them
       INGEST_CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
       INGEST_INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
       NOTIF_CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       NOTIF_INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
-    ports:
-      - "3001:3001" # Made core API port public
     depends_on:
       db:
         condition: service_healthy
@@ -44,8 +55,6 @@ services:
     build: ./web_app
     environment:
       CORE_API_URL: http://api:3001
-    ports:
-      - "8000:8000"
     depends_on:
       - api
     restart: unless-stopped
@@ -54,8 +63,6 @@ services:
     build: ./tester
     environment:
       TESTER_PORT: 8100
-    ports:
-      - "8100:8100"   # Made tester port public
     depends_on:
       - api
     restart: unless-stopped
@@ -87,3 +94,4 @@ services:
 
 volumes:
   db-data:
+  caddy-data:

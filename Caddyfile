@@ -1,0 +1,13 @@
+# Serves every public service on port 80 (plain HTTP), one path prefix per container.
+# handle_path strips the prefix, so /system/health reaches the Core API as /health.
+:80 {
+	handle_path /system/* {
+		reverse_proxy api:3001
+	}
+	handle_path /tester/* {
+		reverse_proxy tester:8100
+	}
+	handle {
+		reverse_proxy web_app:8000
+	}
+}
