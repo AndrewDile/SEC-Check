@@ -74,9 +74,8 @@ class Target:
 
     # ------------------------------------------------------------------ test interface
     def setup(self) -> Reply:
-        setup = {"teams": list(self.settings.teams)}
-        setup.update(self.settings.extra_setup)
-        return self._send("POST", SETUP_PATH, {"session_id": self.session_id, "setup": setup},
+        # setup is always empty: test data is created through the Core API calls themselves
+        return self._send("POST", SETUP_PATH, {"session_id": self.session_id, "setup": {}},
                           self.settings.setup_timeout, use_deadline=False)
 
     def report(self, timeout: Optional[float] = None) -> Reply:

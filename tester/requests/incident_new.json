@@ -1,0 +1,9 @@
+{
+  "Incident_ID": "102356304331",
+  "Method": "NEW",
+  "Timestamp": "2026-10-01T12:00:00Z",
+  "Description": "Ransomware encrypted the billing database.",
+  "Materiality": "MATERIAL",
+  "Severity": "HIGH",
+  "Urgency": "URGENT"
+}

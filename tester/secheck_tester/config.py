@@ -29,8 +29,7 @@ class Settings:
     session_in_body: bool = False       # also add "session_id" to every Core API body
     id_style: str = "digits"            # Incident_ID style: "digits" (12-digit string) or "uuid"
     dependencies_path: str = "/dependencies"
-    teams: List[str] = field(default_factory=lambda: list(DEFAULT_TEAMS))
-    extra_setup: Dict[str, Any] = field(default_factory=dict)   # merged into the "setup" object
+    teams: List[str] = field(default_factory=lambda: list(DEFAULT_TEAMS))   # team names the tests use
 
     ENV = {
         "TESTER_HOST": ("host", str),
@@ -46,7 +45,6 @@ class Settings:
         "TESTER_ID_STYLE": ("id_style", str),
         "TESTER_DEPENDENCIES_PATH": ("dependencies_path", str),
         "TESTER_TEAMS": ("teams", "list"),
-        "TESTER_EXTRA_SETUP_JSON": ("extra_setup", "json"),
     }
 
     @classmethod
