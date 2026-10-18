@@ -1,0 +1,9 @@
+{
+  "Incident_ID": "102356304331",
+  "Method": "NEW",
+  "Timestamp": "2026-10-01T12:05:00Z",
+  "Description": "Contain the billing database and rotate credentials.",
+  "Ticket_severity": "HIGH",
+  "Ticket_urgency": "URGENT",
+  "Team_list": ["CYBER1"]
+}

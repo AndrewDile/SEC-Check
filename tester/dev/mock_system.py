@@ -18,6 +18,7 @@ Bugs, for seeing how the tester reports a faulty system:
   edit-drops-fields  a ticket EDIT resets severity, urgency and teams it didn't send
   log-latest-only    /logs lists only the latest version of each ticket
   ignore-session     one shared state for every session (X-Session-ID ignored); not a bug
+  strict-setup       /test/setup rejects a non-empty setup object (like another pod's system); not a bug
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
 
 BUGS = ("none", "wrong-status", "no-validation", "crash-logs", "unordered-logs", "setup-fails",
-        "claim-steal", "edit-drops-fields", "log-latest-only", "ignore-session")
+        "claim-steal", "edit-drops-fields", "log-latest-only", "ignore-session", "strict-setup")
 MATERIALITY = ["MATERIAL", "IMMATERIAL", "UNDECIDED"]
 SEVERITY = ["HIGH", "MEDIUM", "LOW", "UNDECIDED", "RESOLVED"]
 URGENCY = ["URGENT", "NOT_URGENT", "UNDECIDED", "RESOLVED"]
@@ -106,6 +107,8 @@ class MockSystem:
             return 400, {"message": "session_id is required.", "source": "system"}
         if self.bug == "setup-fails":
             return 500, {"message": "Could not initialize the session database.", "source": "system"}
+        if self.bug == "strict-setup" and payload.get("setup") != {}:
+            return 400, {"message": "setup must be {}", "source": "system"}
         sid = payload["session_id"]
         if sid in self.sessions and self.bug != "ignore-session":
             return 409, {"message": "Session %s already exists." % sid, "source": "system"}

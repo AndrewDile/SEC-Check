@@ -86,7 +86,8 @@ suite wipes the stack's database, because `/test/setup` does.
 The tester touches the target in exactly three ways:
 
 1. **`POST {target}/test/setup`** with
-   `{"session_id": "run-<uuid>", "setup": {"teams": ["LEGAL","CYBER1","CYBER2"]}}`.
+   `{"session_id": "run-<uuid>", "setup": {}}`. `setup` is always empty: the
+   tests create all their data through the Core API calls.
    It waits for `201` with the same ID. Any failure is passed back to the
    caller with the same status, message and source. Unreachable gives 500 /
    `communication`.
@@ -217,7 +218,7 @@ spec allows.
 | Error type for an unknown ticket in `/notifier` | `UUID_DNE` or `INVALID_DATA` | - |
 | Ticket number from another incident, or one that doesn't exist (T-45, T-46) | `UUID_DNE` or `INVALID_DATA` | - |
 | Re-claim by the team that already holds the ticket | Not tested; only a claim by a *different* team must be rejected (T-41) | - |
-| Team names | `LEGAL, CYBER1, CYBER2`, also sent in setup | `TESTER_TEAMS`, `TESTER_EXTRA_SETUP_JSON` |
+| Team names (the Core API has no path to create teams) | Uses `LEGAL, CYBER1, CYBER2` in ticket and notifier calls; the target must already have teams with these names | `TESTER_TEAMS` |
 | Target clock skew | Timestamps are 60 s behind the tester's clock and strictly increasing | - |
 
 ## Settings and time limits

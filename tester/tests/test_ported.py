@@ -93,6 +93,11 @@ class TesterBehaviour(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([t for t, v in r.items() if v["outcome"] != "pass"], [])
 
+    def test_setup_object_is_empty(self):
+        status, _, r = run_against("strict-setup")
+        self.assertEqual(status, 200)
+        self.assertEqual([t for t, v in r.items() if v["outcome"] != "pass"], [])
+
     def test_two_sessions_on_a_shared_system_dont_interfere(self):
         system, target = mock_system.start(bug="ignore-session")
         try:
@@ -175,10 +180,10 @@ class TesterBehaviour(unittest.TestCase):
 
     def test_settings_from_env(self):
         s = Settings.from_env({"TESTER_PORT": "9000", "TESTER_TEAMS": "A, B", "TESTER_SESSION_IN_BODY": "true",
-                               "TESTER_BASE_PATH": "tester/", "TESTER_EXTRA_SETUP_JSON": '{"seed": 1}',
+                               "TESTER_BASE_PATH": "tester/",
                                "TESTER_DEPENDENCIES_PATH": "dependancies"})
-        self.assertEqual((s.port, s.teams, s.session_in_body, s.base_path, s.extra_setup, s.dependencies_path),
-                         (9000, ["A", "B"], True, "/tester", {"seed": 1}, "/dependancies"))
+        self.assertEqual((s.port, s.teams, s.session_in_body, s.base_path, s.dependencies_path),
+                         (9000, ["A", "B"], True, "/tester", "/dependancies"))
 
     def test_list_command(self):
         out = subprocess.run([sys.executable, "-m", "secheck_tester", "--list"], cwd=ROOT,
