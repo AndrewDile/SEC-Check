@@ -25,7 +25,10 @@ container (see `Caddyfile`):
 http://localhost/          web app
 http://localhost/system/   Core API (the "system" for cross-team testing), e.g. /system/health
 http://localhost/tester/   tester
+http://localhost/logs/     live logs for every container (login: LOGS_USER and password in .env)
 ```
+
+The log viewer needs `LOGS_USER` and `LOGS_PASSWORD_HASH` in `.env`; `.env.example` shows how to make the hash.
 
 Working on just the API (reloads on save):
 

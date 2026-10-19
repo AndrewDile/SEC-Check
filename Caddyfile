@@ -7,6 +7,13 @@
 	handle_path /tester/* {
 		reverse_proxy tester:8100
 	}
+	# Not handle_path: Dozzle is told its base path, so it expects to receive /logs
+	handle /logs* {
+		basic_auth {
+			{$LOGS_USER} {$LOGS_PASSWORD_HASH}
+		}
+		reverse_proxy logs:8080
+	}
 	handle {
 		reverse_proxy web_app:8000
 	}

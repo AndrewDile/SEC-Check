@@ -6,10 +6,23 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
+    environment:   # login for /logs/
+      LOGS_USER: ${LOGS_USER}
+      LOGS_PASSWORD_HASH: ${LOGS_PASSWORD_HASH}
     depends_on:
       - api
       - web_app
       - tester
+      - logs
+    restart: unless-stopped
+
+  logs:   # log viewer for every container, served at /logs/ behind a password (see Caddyfile)
+    image: amir20/dozzle:v11.3.2
+    environment:
+      DOZZLE_BASE: /logs
+      DOZZLE_NO_ANALYTICS: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
   api:
