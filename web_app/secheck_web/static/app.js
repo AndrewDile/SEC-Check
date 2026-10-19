@@ -129,7 +129,7 @@ async function signIn(name) {
   state.user = name || null;
   state.session = null;
   store("secheck_user", name || undefined);
-  // Cookie lets the API docs page (/docs) make signed-in requests too.
+  // Cookie lets the API docs in the developer docs (/docs/) make signed-in requests too.
   document.cookie = name ? `secheck_session=${encodeURIComponent(name)}; path=/; SameSite=Strict`
                          : "secheck_session=; path=/; max-age=0";
   if (!name) return;

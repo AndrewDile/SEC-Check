@@ -14,6 +14,7 @@ services:
       - web_app
       - tester
       - logs
+      - docs
     restart: unless-stopped
 
   logs:   # log viewer for every container, served at /logs/ behind a password (see Caddyfile)
@@ -23,6 +24,12 @@ services:
       DOZZLE_NO_ANALYTICS: "true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  docs:   # developer docs (MkDocs), served at /docs/; built from docs/ and each service's OpenAPI files
+    build:
+      context: .
+      dockerfile: docs/Dockerfile
     restart: unless-stopped
 
   api:

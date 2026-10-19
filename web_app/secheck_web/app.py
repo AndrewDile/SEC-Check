@@ -87,10 +87,6 @@ class WebApp:
             )
         if method == "GET" and path == "/openapi.json":
             return json_response(200, self.spec.doc)
-        if method == "GET" and path == "/docs":
-            found = static_file(self.settings.static_dir, "docs.html")
-            if found:
-                return found
         try:
             route, params, path_exists = self.router.match(method, path)
             if route is None:

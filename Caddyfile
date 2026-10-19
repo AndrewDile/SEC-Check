@@ -14,6 +14,10 @@
 		}
 		reverse_proxy logs:8080
 	}
+	redir /docs /docs/
+	handle_path /docs/* {
+		reverse_proxy docs:80
+	}
 	handle {
 		reverse_proxy web_app:8000
 	}

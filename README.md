@@ -3,10 +3,17 @@
 Incident tracking for SEC cybersecurity disclosure (Form 8-K Item 1.05).
 
 ```
-api/   Core API (Express + TypeScript)
-web/   Web app (Next.js) — coming
-db/    SQL migrations — not wired up yet
+api/                    Core API (Express + TypeScript)
+web_app/                Web app (Python, standard library only)
+ingestion_worker/       Polls CISA KEV and SEC EDGAR for incidents (Python)
+notification_service/   Notifies teams of new incidents (Python)
+tester/                 Cross-team tester (Python)
+db/migrations/          MySQL schema, applied when the database volume is created
+docs/                   Developer docs (MkDocs), served at /docs/
 ```
+
+Developer docs for everything here, including interfaces and known limitations, are at
+http://localhost/docs/ once the stack is up, or run `./docs.sh` to preview them.
 
 ## Setup
 
@@ -26,6 +33,7 @@ http://localhost/          web app
 http://localhost/system/   Core API (the "system" for cross-team testing), e.g. /system/health
 http://localhost/tester/   tester
 http://localhost/logs/     live logs for every container (login: LOGS_USER and password in .env)
+http://localhost/docs/     developer docs: services, interfaces, data model, known limitations
 ```
 
 The log viewer needs `LOGS_USER` and `LOGS_PASSWORD_HASH` in `.env`; `.env.example` shows how to make the hash.
