@@ -14,6 +14,7 @@ service, interface and known limitation; read the relevant page before changing 
 | `notification_service/` | Notifies teams of new incidents | Python 3.12+, FastAPI, Pydantic v2 |
 | `tester/` | Cross-team tester (54 ordered tests, T-01..T-54) | Python, **standard library only** |
 | `db/migrations/` | MySQL schema | SQL |
+| `architecture/` | System model, and the checks that verify the repo against it | YAML, Python |
 | `docs/` | Developer docs, served at `/docs/` | MkDocs |
 
 Services never call each other: each talks only to the Core API, which calls back the services
@@ -29,20 +30,22 @@ with `cd api && npm install` done once.
 ./lint.sh              # ruff + tsc + Biome; ./lint.sh --fix fixes what it can
 ./format.sh            # format everything; ./format.sh --check is what CI runs
 ./docs.sh build        # strict MkDocs build, as the docs container does it
+./verify.sh            # check the repo against architecture/model.yaml; --list lists checks
 docker compose up --build
 ```
 
 `./test.sh` runs every suite against a local stack, as CI does. It **wipes the local database**,
 so ask before running it.
 
-CI (`.github/workflows/ci.yml`) runs lint and format, then tests, on every push and PR. **Every
-push to `main` deploys to production (EC2)**, so work on a branch and open a PR.
+CI (`.github/workflows/ci.yml`) runs lint, format and `./verify.sh`, then tests, on every push
+and PR. **Every push to `main` deploys to production (EC2)**, so work on a branch and open a PR.
 
 ## Rules
 
 - **Don't edit generated files.** `ingestion_worker/models.py` and `notification_service/models.py`
   are generated from that service's `core_api.openapi.yaml` by its `generate_models.sh`. Change
-  the spec, then regenerate.
+  the spec, then regenerate with `./verify.sh --fix generated`. `./verify.sh` fails if either is
+  out of date.
 - **Keep the shared schemas identical.** Schemas defined in both `core_api.openapi.yaml` files
   (`SourceName`, `Incident`, `Priority`, ...) describe one Core API payload. The rest of each
   file is meant to differ: it lists only what that service needs.
@@ -54,6 +57,9 @@ push to `main` deploys to production (EC2)**, so work on a branch and open a PR.
   (`docs/pages/operations.md`).
 - **The Core API's `/system` endpoints are a shared interface.** Other teams' testers call them
   per the course's API spec; don't change their paths or payloads.
+- **`architecture/model.yaml` is the source of truth for how the system fits together.** Change
+  the model first, then the config it describes. `./verify.sh` (run in CI) fails wherever
+  the repo disagrees with it; `docs/pages/verification.md` explains how to add a check.
 - **Keep `web_app/` and `tester/` dependency-free** (standard library only). The tester must not
   import any system code, and `tester/secheck_tester/target.py` is the only place that knows the
   target's URLs.

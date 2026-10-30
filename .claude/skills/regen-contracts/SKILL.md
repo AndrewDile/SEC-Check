@@ -27,10 +27,11 @@ part of the change.
 2. **Regenerate the models** of every service whose `core_api.openapi.yaml` changed (needs
    [uv](https://docs.astral.sh/uv/)):
    ```bash
-   ingestion_worker/generate_models.sh
-   notification_service/generate_models.sh
+   ./verify.sh --fix generated
    ```
-   Review `git diff */models.py`: renamed or removed fields break the service's code.
+   This runs each service's `generate_models.sh`. `./verify.sh generated` (also run in
+   CI) fails while a `models.py` is out of date. Review `git diff */models.py`:
+   renamed or removed fields break the service's code.
 
 3. **Check the shared schemas still match:**
    ```bash
@@ -53,9 +54,9 @@ part of the change.
    `docs/pages/services/*.md` describe each service's endpoints. The Swagger pages pick up the
    specs on their own (see `docs/hooks.py`). Check that the site builds: `./docs.sh build`.
 
-6. **Lint, format and test:**
+6. **Lint, format, verify and test:**
    ```bash
-   ./lint.sh && ./format.sh --check
+   ./lint.sh && ./format.sh --check && ./verify.sh
    ```
    `./test.sh` runs the API tests and the cross-team suite, but it **wipes the local
    database**. Ask before running it.

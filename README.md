@@ -9,6 +9,7 @@ ingestion_worker/       Polls CISA KEV and SEC EDGAR for incidents (Python)
 notification_service/   Notifies teams of new incidents (Python)
 tester/                 Cross-team tester (Python)
 db/migrations/          MySQL schema, applied when the database volume is created
+architecture/           System model, and the checks that verify the repo against it
 docs/                   Developer docs (MkDocs), served at /docs/
 ```
 
@@ -65,5 +66,7 @@ local database**. CI runs it after lint and format pass, and deploys `main` only
 
 ## Adding a container
 
-Put your part in its own folder with a `Dockerfile`, then add a service to `docker-compose.yml`.
-Containers reach each other by service name, e.g. `http://api:3001`.
+Put your part in its own folder with a `Dockerfile`, then add it to `architecture/model.yaml` with the
+containers it talks to. Then add a service to `docker-compose.yml`, with a network for each of those
+connections: containers reach each other by service name (e.g. `http://api:3001`), but only over a
+network they share. `./verify.sh` (and so CI) fails until the compose file matches the model.

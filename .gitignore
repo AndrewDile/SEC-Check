@@ -5,3 +5,6 @@ dist/
 __pycache__/
 DECISIONS.md
 *.py[co]
+
+# Left behind only if ./verify.sh is killed mid-check
+.verify-*/

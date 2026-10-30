@@ -44,6 +44,26 @@ database's `127.0.0.1:3306` is for local tools only.
 The API, web app and tester all have their own `/health` or `/test/...` routes. That's why each
 needs its own prefix instead of sharing the root.
 
+## Network isolation
+
+Containers can reach only the containers they share a Docker network with, and
+`docker-compose.yml` has one network per connection in the
+[system model](verification.md):
+
+| Network | Containers |
+|---|---|
+| `web` | `caddy`, `web_app`, `api` |
+| `tester` | `caddy`, `tester` |
+| `logs` | `caddy`, `logs` |
+| `docs` | `caddy`, `docs` |
+| `data` | `api`, `db` |
+| `ingest` | `api`, `ingestion-worker` |
+| `notify` | `api`, `notification-service` |
+
+The `network.*` checks fail if two containers share a network that the model doesn't connect.
+Docker networks can't tell who opens a connection, so the bearer tokens below enforce direction.
+The tester reaches the system through Caddy (`http://caddy/system`), not `api` directly.
+
 ## Service-to-service authentication
 
 The pod's Core API endpoints (`/incidents`, `/tickets` and so on) take no credentials. Only the

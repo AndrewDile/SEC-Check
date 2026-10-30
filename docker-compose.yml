@@ -15,6 +15,7 @@ services:
       - tester
       - logs
       - docs
+    networks: [web, tester, logs, docs]
     restart: unless-stopped
 
   logs:   # log viewer for every container, served at /logs/ behind a password (see Caddyfile)
@@ -24,12 +25,14 @@ services:
       DOZZLE_NO_ANALYTICS: "true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [logs]
     restart: unless-stopped
 
   docs:   # developer docs (MkDocs), served at /docs/; built from docs/ and each service's OpenAPI files
     build:
       context: .
       dockerfile: docs/Dockerfile
+    networks: [docs]
     restart: unless-stopped
 
   api:
@@ -51,6 +54,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks: [web, data, ingest, notify]
     restart: unless-stopped
 
   db:
@@ -69,6 +73,7 @@ services:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
       retries: 30
+    networks: [data]
     restart: unless-stopped
 
   web_app:
@@ -77,14 +82,16 @@ services:
       CORE_API_URL: http://api:3001
     depends_on:
       - api
+    networks: [web]
     restart: unless-stopped
 
-  tester:   # cross-team tester; inside the stack the Core API is http://api:3001
+  tester:   # cross-team tester; it reaches the system through Caddy, at http://caddy/system
     build: ./tester
     environment:
       TESTER_PORT: 8100
     depends_on:
       - api
+    networks: [tester]
     restart: unless-stopped
 
   ingestion-worker:
@@ -98,6 +105,7 @@ services:
       SEC_USER_AGENT: ${SEC_USER_AGENT}
     depends_on:
       - api
+    networks: [ingest]
     restart: unless-stopped
 
   notification-service:
@@ -110,7 +118,19 @@ services:
       INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
     depends_on:
       - api
+    networks: [notify]
     restart: unless-stopped
+
+# One network per connection in architecture/model.yaml, so containers reach only what they talk to.
+# ./verify.sh checks this against the model: change the model first.
+networks:
+  web:      # Caddy, web app and Core API
+  tester:   # Caddy and tester
+  logs:     # Caddy and log viewer
+  docs:     # Caddy and docs
+  data:     # Core API and MySQL
+  ingest:   # Core API and ingestion worker
+  notify:   # Core API and notification service
 
 volumes:
   db-data:
