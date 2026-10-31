@@ -83,7 +83,7 @@ web_app/
     validation.py               JSON-schema subset validator
     web.py                      tiny HTTP server on the standard library
     config.py                   settings
-    static/                     the browser app (HTML, CSS, JS; no build step)
+    static/                     the browser app (HTML, CSS, JS; no build step); data-testid attributes are used by ../ui_tests
       logo.png                  logo in the page footer + browser-tab icon (replace this file to update it)
 ```
 
@@ -98,3 +98,7 @@ web_app/
 | Enum value, max length, pattern, required field | Nothing: validation and the UI dropdowns read the contract |
 | New Web App operation | Add a function with `@operation("<operationId>")` in `secheck_web/handlers/` (until then it answers `501`) |
 | Core API field or path renamed | `secheck_web/core_client.py` |
+
+## Browser tests
+
+`../ui_tests` drives this app in a real browser (Playwright) against the Docker stack. See `../ui_tests/README.md`. The tests find elements by their `data-testid` attributes in `static/index.html` and `static/app.js`, so keep those when changing the markup.

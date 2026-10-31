@@ -12,21 +12,23 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#/incidents">SEC-Check</a>
+    <a class="brand" href="#/incidents" data-testid="brand">SEC-Check</a>
     <nav class="nav" aria-label="Main">
-      <a href="#/incidents" data-nav="incidents">Incidents</a>
-      <a href="#/queue" data-nav="queue">Team queue</a>
-      <a href="#/dependencies" data-nav="dependencies">Dependencies</a>
+      <a href="#/incidents" data-nav="incidents" data-testid="nav-incidents">Incidents</a>
+      <a href="#/queue" data-nav="queue" data-testid="nav-queue">Team queue</a>
+      <a href="#/dependencies" data-nav="dependencies" data-testid="nav-dependencies">Dependencies</a>
     </nav>
     <label class="signin">
       <span class="signin-label">Signed in as</span>
-      <select id="user-select" aria-label="Signed-in user"></select>
+      <select id="user-select" aria-label="Signed-in user" data-testid="user-select"></select>
     </label>
   </header>
-  <div id="notice" class="notice" role="status" aria-live="polite" tabindex="-1" hidden></div>
-  <main id="main" class="main"></main>
+  <div id="notice" data-testid="notice" class="notice" role="status" aria-live="polite" tabindex="-1" hidden></div>
+  <!-- Announces changes that have no visible notice (e.g. "press again to confirm"). -->
+  <div id="announcer" class="sr-only" role="status" aria-live="polite" data-testid="announcer"></div>
+  <main id="main" class="main" data-testid="main"></main>
   <footer class="footer">
-    <span id="core-status">Checking Core API…</span>
+    <span id="core-status" data-testid="core-status">Checking Core API…</span>
     <a href="/docs">API docs</a>
     <img class="footer-logo" src="logo.png" alt="SEC-Check logo" width="86" height="96">
   </footer>

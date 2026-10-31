@@ -3,7 +3,8 @@
   --surface: #ffffff;
   --ink: #17212b;
   --muted: #5b6773;
-  --rule: #c9d1d9;
+  --rule: #c9d1d9;           /* decorative borders (panels, tables) */
+  --field-border: #768390;   /* form field borders: at least 3:1 against white (WCAG 1.4.11) */
   --rule-soft: #e3e8ed;
   --action: #1f5f8b;
   --action-ink: #ffffff;
@@ -12,7 +13,8 @@
   --undecided: #8a6a12;
   --error-bg: #fbeaec;
   --ok-bg: #e8f2ec;
-  --focus: #f2b705;
+  --focus: #f2b705;          /* focus ring on the dark top bar */
+  --focus-ring: #17212b;     /* focus ring on light backgrounds (16:1 against white) */
   --radius: 4px;
   --font: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light;
@@ -53,7 +55,17 @@ td .more-toggle, .ticket .more-toggle { margin-bottom: .5rem; }
 .muted { color: var(--muted); }
 [hidden] { display: none !important; }
 
-:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* Focus must be visible on every background (WCAG 2.4.7, 1.4.11): dark ring on light areas,
+   yellow ring in the dark top bar. */
+:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.topbar :focus-visible { outline-color: var(--focus); }
+/* Headings that receive focus after navigation don't need a ring; screen readers announce them. */
+[tabindex="-1"]:focus { outline: none; }
+/* Visible to screen readers only. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
 
 /* ---------- top bar ---------- */
 .topbar {
@@ -91,7 +103,7 @@ label .hint { display: block; font-weight: 400; color: var(--muted); font-size: 
 input, select, textarea {
   font: inherit; font-size: .95rem; color: var(--ink);
   width: 100%; margin-top: .25rem; padding: .45rem .6rem;
-  border: 1px solid var(--rule); border-radius: var(--radius); background: #fff;
+  border: 1px solid var(--field-border); border-radius: var(--radius); background: #fff;
 }
 .signin select { width: auto; margin: 0; color: var(--ink); }
 textarea { min-height: 5.5rem; resize: vertical; }
@@ -164,6 +176,7 @@ th, td { text-align: left; padding: .6rem .75rem; border-bottom: 1px solid var(-
 th { font-size: .8rem; font-weight: 600; color: var(--muted); border-bottom-color: var(--rule); }
 tbody tr.link { cursor: pointer; }
 tbody tr.link:hover { background: var(--paper); }
+td.num a { color: inherit; }
 .log-table { font-size: .875rem; }
 .log-table td.desc { white-space: pre-wrap; min-width: 16rem; }
 .log-table td.when { white-space: nowrap; }
