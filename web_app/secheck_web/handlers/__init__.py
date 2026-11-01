@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 from ..config import Settings
 from ..core_client import CoreClient
 from ..errors import WebAppError, invalid
+from ..membership import MembershipStore
 from ..validation import utc_now
 
 OPERATIONS: Dict[str, Callable] = {}
@@ -73,11 +74,26 @@ class Context:
     core: CoreClient
     now: Callable[[], str] = utc_now
     new_incident_id: Callable[[], str] = random_incident_id
+    memberships: Optional[MembershipStore] = None  # set by WebApp (membership.py)
+
+    def teams(self) -> List[str]:
+        """Every team that exists: the Core API (/teams LIST) is the source of truth."""
+        return self.core.team_list(None)
+
+    def user_teams(self, user: str) -> List[str]:
+        """The teams a user belongs to, leaving out memberships of teams that no longer exist."""
+        if self.memberships is None:
+            return list(self.settings.users.get(user, []))
+        existing = set(self.teams())
+        return [t for t in self.memberships.teams_of(user) if t in existing]
 
 
 # ---------------------------------------------------------------- shared checks
 def require_known_teams(ctx: Context, names: List[str], field_name: str) -> None:
-    unknown = [t for t in names if t not in ctx.settings.teams]
+    if not names:
+        return
+    existing = set(ctx.teams())
+    unknown = [t for t in names if t not in existing]
     if unknown:
         raise invalid(f"{field_name} contains unknown team: {', '.join(unknown)}.")
 

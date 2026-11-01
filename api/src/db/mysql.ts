@@ -371,11 +371,34 @@ export class MySqlDb implements Database {
   // teams
 
   async createTeam(name: string, responsibility?: string) {
-    await this.pool.query('INSERT INTO teams (team_name, responsibility, created_at) VALUES (?, ?, ?)', [
-      name,
-      responsibility ?? null,
-      new Date(),
-    ]);
+    await this.tx(async (c) => {
+      try {
+        await c.query('INSERT INTO teams (team_name, responsibility, created_at) VALUES (?, ?, ?)', [
+          name,
+          responsibility ?? null,
+          new Date(),
+        ]);
+      } catch (e) {
+        if ((e as { code?: string }).code === 'ER_DUP_ENTRY')
+          throw new DbError('TEAM_EXISTS', 'The team name already exists in the system.');
+        throw e;
+      }
+      await this.audit(c, undefined, 'TEAM_CREATED', { name });
+    });
+  }
+
+  async removeTeam(name: string) {
+    await this.tx(async (c) => {
+      if (!(await this.rows(c, 'SELECT 1 FROM teams WHERE team_name = ? FOR UPDATE', [name])).length)
+        throw new DbError('TEAM_DNE', 'The team name does not exist in the system.');
+      // Tickets, notifications and claims are append-only history, so a team they refer to stays.
+      for (const table of ['ticket_version_teams', 'notifications', 'ticket_claims']) {
+        if ((await this.rows(c, `SELECT 1 FROM ${table} WHERE team_name = ? LIMIT 1`, [name])).length)
+          throw new DbError('INVALID_DATA', `Team ${name} is used by existing tickets and can't be removed.`);
+      }
+      await c.query('DELETE FROM teams WHERE team_name = ?', [name]);
+      await this.audit(c, undefined, 'TEAM_REMOVED', { name });
+    });
   }
 
   async listTeams() {

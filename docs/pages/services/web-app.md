@@ -35,7 +35,7 @@ The server routes requests from the contract:
   adds an audit ticket.
 - **Decisions:** record Materiality, Severity and Urgency with a rationale.
     - Only `decision_teams` may decide; any signed-in user can when that list is empty.
-    - The first change to `MATERIAL` notifies every configured team through Core `/notifier`.
+    - The first change to `MATERIAL` notifies every team (Core `/teams LIST`) through Core `/notifier`.
 - **Tickets:** list them for an incident, create, view, edit (which adds a version), claim for
   one team, and notify teams.
 - **Queue:** the tickets visible to a team, filtered by claim state.
@@ -48,7 +48,13 @@ The server routes requests from the contract:
     - **Timing:** discovered, determined, and an event list.
     - **Material impact:** the decision rationales.
 - **Dependencies:** add, check and remove. Listing them is an extension.
-- **Teams:** come from settings, not the Core API.
+- **Teams** (Teams page): create and remove teams, and add or remove members.
+    - **Teams** are stored by the Core API (`/teams`). Only existing teams can be used on tickets,
+      notifications, claims and the queue. A team that tickets use can't be removed.
+    - **Members** aren't in the database yet, so the web app keeps them (`membership.py`). They
+      start from each user's teams in `settings.json` and are saved to `membership_file`.
+      When the database stores members, set `membership_source` to `core`; nothing else changes.
+    - A user's teams decide what they can claim and which queue opens first.
 
 ## Interfaces
 
@@ -66,6 +72,12 @@ session cookie is shared.
 | `GET /dev/users` | no | The sign-in list. Only when `auth_mode` is `dev` |
 | `GET /health` | no | Liveness, and whether the Core API answers. Any Core reply counts, even an error |
 | `GET /dependencies` | yes | Every dependency (uses Core `LIST`) |
+| `GET /team-members` | yes | Every team with its members, and the users who can join |
+| `POST /teams` | yes | Create a team: `{"Team_Name"}` (Core `/teams NEW`) |
+| `DELETE /teams/{Team_Name}` | yes | Remove a team (Core `/teams REMOVE`) and its memberships |
+| `POST /teams/{Team_Name}/members` | yes | Add a user: `{"User"}`. `TEAM_DNE`, `USER_DNE`, or `INVALID_DATA` if already a member |
+| `DELETE /teams/{Team_Name}/members/{User}` | yes | Remove a user from a team |
+| `POST /dev/reset-memberships` | no | Put memberships back to the starting teams (tests). Only when `auth_mode` is `dev` |
 | `GET /incidents/{id}/log/entries` | yes | Every ticket version, with its details |
 
 **Outside `/webapp/v1`:** `/` redirects to `/app/`; `/app/*` serves the UI; `/openapi.json`
@@ -112,8 +124,10 @@ The settings are in `config/settings.json`, and environment variables override t
 | `host` / `port` | `SECHECK_HOST` / `SECHECK_PORT` | `127.0.0.1` / `8000` (the container sets `0.0.0.0`) |
 | `core_api_url` | `CORE_API_URL` | `http://127.0.0.1:3001` (Compose sets `http://api:3001`) |
 | `core_timeout_seconds` | `CORE_TIMEOUT_SECONDS` | `10` |
-| `teams` | `SECHECK_TEAMS` (JSON list) | `["LEGAL","CYBER1","CYBER2"]`. Must match the Core API's teams |
-| `users` | `SECHECK_USERS` (JSON object) | Sample users and their teams |
+| `users` | `SECHECK_USERS` (JSON object) | Sample users and the teams each starts in |
+| `membership_source` | `SECHECK_MEMBERSHIP_SOURCE` | `local`: the web app keeps team members. `core` once the database stores them |
+| `membership_file` | `SECHECK_MEMBERSHIP_FILE` | `data/memberships.json`. In Docker, the `web-data` volume keeps it across rebuilds |
+| `teams` | `SECHECK_TEAMS` | No longer used; teams come from the Core API |
 | `decision_teams` | `SECHECK_DECISION_TEAMS` | `[]`, meaning anyone may decide |
 | `auth_mode` | `SECHECK_AUTH_MODE` | `dev` |
 | `log_requests` | `SECHECK_LOG_REQUESTS` | `true`, which writes one line per request to stderr |

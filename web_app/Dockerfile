@@ -18,7 +18,10 @@ ENV SECHECK_HOST=0.0.0.0 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-RUN useradd --create-home --uid 10001 webapp
+# data/ holds team memberships (membership_file) until the database stores them;
+# docker-compose.yml mounts a volume there so they survive rebuilds.
+RUN useradd --create-home --uid 10001 webapp \
+    && mkdir -p /app/data && chown webapp /app/data
 USER webapp
 
 EXPOSE 8000

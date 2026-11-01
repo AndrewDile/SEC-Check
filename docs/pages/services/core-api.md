@@ -29,14 +29,16 @@ worker and notifier call are in their `core_api.openapi.yaml` files, shown on th
 - **Timestamps:** `Timestamp` must be RFC 3339 and at most 5 seconds in the future. It is
   checked on every method except `LIST`.
 - **Errors:** status 400 and `{"Error": "<type>", "Message": "..."}`. The types are
-  `INVALID_DATA`, `UUID_EXISTS`, `UUID_DNE`, `DP_EXISTS` and `DP_DNE`.
+  `INVALID_DATA`, `UUID_EXISTS`, `UUID_DNE`, `DP_EXISTS`, `DP_DNE`, `TEAM_EXISTS` and
+  `TEAM_DNE` (`USER_EXISTS` and `USER_DNE` are reserved for the user path).
     - Body that isn't valid JSON: `INVALID_DATA`.
     - Anything unexpected: 500 `INTERNAL_ERROR`, logged to stderr.
     - Under `/test/` errors use the tester's format instead: `{"message": "...", "source": "system"}`.
 - **Validation:**
     - `Incident_ID`: non-empty, no `_`, at most 64 characters.
     - `Description`: at most 5000 characters.
-    - Unknown team names: `INVALID_DATA`.
+    - Team names on `/tickets` (`Team_list`) and `/notifier` (`Team_Names`) must be teams that
+      exist, i.e. were created through `/teams` or restored by a reset. Others: `INVALID_DATA`.
     - Any field too long for its column: `INVALID_DATA`.
 - **Transactions:** each database method runs in one transaction and is retried up to 5 times
   on a deadlock.
@@ -99,9 +101,23 @@ The contract spells the path both ways, so both work. It uses lowercase `method`
 | `REMOVE` | Removes it (`DP_DNE` if it isn't there) and tells the worker | `Removed` |
 | `LIST` | Every dependency name (extension) | `Listed` |
 
+### `POST /teams`
+
+| `Method` | Needs | Does | `Status` |
+|---|---|---|---|
+| `NEW` | `Team_Name` | Creates the team (`TEAM_EXISTS` if it's already there) | `Created` |
+| `REMOVE` | `Team_Name` | Removes it (`TEAM_DNE` if it isn't there). A team that tickets, notifications or claims refer to stays: `INVALID_DATA` | `Removed` |
+| `GET` | `Team_Name` | Checks it exists (`TEAM_DNE` if not) | `Team Received` |
+| `LIST` | nothing | Every team name, oldest first, as `Team_List` | `Teams Listed` |
+| `ADD_USER` / `REMOVE_USER` | `Team_Name`, `Username` | Rejected with `INVALID_DATA` for now: the database doesn't store team members yet, so the web app keeps them | |
+
+`Team_Name` is 1-64 characters with no leading or trailing spaces, and required for every
+method except `LIST`. The response has `Status`, plus `Team_Name` (every method except `LIST`),
+`Team_List` (`LIST`) and `Username` (`ADD_USER`/`REMOVE_USER`, once members are stored).
+
 ### `POST /reset`
 
-Send `{"method": "RESET"}`. It truncates every table, restores the default teams and the audit
+Send `{"method": "RESET"}`. It truncates every table, restores the default teams (`LEGAL`, `CYBER1`, `CYBER2`) and the audit
 genesis, and tells the worker to delete every dependency. It returns `{"status": "DB Wiped"}`.
 **It takes no authentication.**
 

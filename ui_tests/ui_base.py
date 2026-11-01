@@ -5,14 +5,15 @@ fresh browser context, and signs in as `user`. When a test fails, a Playwright
 trace and a screenshot are saved under ui_tests/artifacts/.
 
 Settings (environment variables):
-  WEB_URL            Web App base URL               default http://localhost:8000
-  CORE_URL           Core API base URL              default http://localhost:3001
+  WEB_URL            Web App base URL               default http://localhost (through Caddy)
+  CORE_URL           Core API base URL              default http://localhost/system
   HEADED=1           show the browser window
   SLOWMO=300         pause this many ms between browser actions (with HEADED, to watch)
   BROWSER            chromium | firefox | webkit    default chromium
   UI_TIMEOUT_MS      how long to wait for elements  default 10000
   UI_ALLOW_REMOTE=1  allow URLs other than localhost (the tests WIPE the database)
 """
+
 from __future__ import annotations
 
 import json
@@ -27,8 +28,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-WEB_URL = os.environ.get("WEB_URL", "http://localhost:8000").rstrip("/")
-CORE_URL = os.environ.get("CORE_URL", "http://localhost:3001").rstrip("/")
+WEB_URL = os.environ.get("WEB_URL", "http://localhost").rstrip("/")
+CORE_URL = os.environ.get("CORE_URL", "http://localhost/system").rstrip("/")
 HEADED = os.environ.get("HEADED", "") not in ("", "0", "false")
 SLOWMO = float(os.environ.get("SLOWMO", "0") or 0)
 BROWSER = os.environ.get("BROWSER", "chromium")
@@ -46,8 +47,12 @@ class Core:
         self.base_url = base_url
 
     def post(self, path: str, body: Dict[str, Any]) -> Tuple[int, Any]:
-        req = urllib.request.Request(self.base_url + path, data=json.dumps(body).encode(), method="POST",
-                                     headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(
+            self.base_url + path,
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
         try:
             with urllib.request.urlopen(req, timeout=15) as r:
                 return r.status, json.loads(r.read() or b"null")
@@ -65,13 +70,24 @@ class Core:
 
     # Reads used to check that the UI really stored something
     def incident(self, incident_id: str) -> Dict[str, Any]:
-        return self.ok("/incidents", {"Incident_ID": incident_id, "Method": "GET", "Timestamp": now(), "Description": ""})
+        return self.ok(
+            "/incidents",
+            {"Incident_ID": incident_id, "Method": "GET", "Timestamp": now(), "Description": ""},
+        )
 
     def incidents(self):
         return self.ok("/incidents", {"Method": "LIST", "Timestamp": now()})["Incidents"]
 
     def ticket(self, incident_id: str, number: str) -> Dict[str, Any]:
-        return self.ok("/tickets", {"Incident_ID": incident_id, "Method": "GET", "Timestamp": now(), "Ticket_number": number})
+        return self.ok(
+            "/tickets",
+            {
+                "Incident_ID": incident_id,
+                "Method": "GET",
+                "Timestamp": now(),
+                "Ticket_number": number,
+            },
+        )
 
     def log(self, incident_id: str):
         return self.ok("/logs", {"Incident_ID": incident_id, "Timestamp": now()})["Ticket_ID_List"]
@@ -82,29 +98,48 @@ class Core:
 
 def now() -> str:
     from datetime import datetime, timedelta, timezone
+
     return (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def reset_memberships() -> None:
+    """Team memberships are kept by the Web App for now; put them back to the users' starting teams."""
+    req = urllib.request.Request(
+        WEB_URL + "/webapp/v1/dev/reset-memberships",
+        data=b"{}",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=15):
+        pass
 
 
 def _check_targets() -> None:
     for name, url in (("WEB_URL", WEB_URL), ("CORE_URL", CORE_URL)):
         host = urllib.parse.urlsplit(url).hostname
         if host not in LOCAL_HOSTS and os.environ.get("UI_ALLOW_REMOTE") != "1":
-            raise unittest.SkipTest("%s=%s is not local and these tests wipe the database; set UI_ALLOW_REMOTE=1 "
-                                    "if that's really what you want." % (name, url))
+            raise unittest.SkipTest(
+                "%s=%s is not local and these tests wipe the database; set UI_ALLOW_REMOTE=1 "
+                "if that's really what you want." % (name, url)
+            )
     try:
         with urllib.request.urlopen(WEB_URL + "/webapp/v1/health", timeout=10) as r:
             health = json.loads(r.read())
     except (urllib.error.URLError, OSError) as exc:
-        raise RuntimeError("The Web App isn't reachable at %s (%s). Start the stack first: docker compose up -d --build"
-                           % (WEB_URL, exc))
+        raise RuntimeError(
+            "The Web App isn't reachable at %s (%s). Start the stack first: docker compose up -d --build"
+            % (WEB_URL, exc)
+        )
     if not health.get("Core_API_Reachable"):
-        raise RuntimeError("The Web App can't reach its Core API: %s" % health.get("Core_API_Detail"))
+        raise RuntimeError(
+            "The Web App can't reach its Core API: %s" % health.get("Core_API_Detail")
+        )
 
 
 class UITestCase(unittest.TestCase):
     """Base class: one browser per test class, a fresh context and empty database per test."""
 
-    user: Optional[str] = "alice"     # signed in before each test; None = stay signed out
+    user: Optional[str] = "alice"  # signed in before each test; None = stay signed out
     core = Core()
 
     @classmethod
@@ -120,6 +155,7 @@ class UITestCase(unittest.TestCase):
 
     def setUp(self):
         self.core.reset()
+        reset_memberships()
         self.context = self._browser.new_context(base_url=WEB_URL)
         self.context.set_default_timeout(TIMEOUT_MS)
         self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
@@ -145,7 +181,7 @@ class UITestCase(unittest.TestCase):
         result = result or self.defaultTestResult()
         problems = len(result.failures) + len(result.errors)
         super().run(result)
-        if len(result.failures) + len(result.errors) == problems:   # passed: keep nothing
+        if len(result.failures) + len(result.errors) == problems:  # passed: keep nothing
             for path in getattr(self, "_artifacts", []):
                 path.unlink(missing_ok=True)
         return result
@@ -174,9 +210,15 @@ class UITestCase(unittest.TestCase):
         expect(notice).to_have_class(re.compile(r"\b%s\b" % kind))
         expect(notice).to_contain_text(text)
 
-    def report_incident(self, description: str, materiality: str = "UNDECIDED", severity: str = "UNDECIDED",
-                        urgency: str = "UNDECIDED", dependency: Optional[str] = None,
-                        incident_id: Optional[str] = None) -> str:
+    def report_incident(
+        self,
+        description: str,
+        materiality: str = "UNDECIDED",
+        severity: str = "UNDECIDED",
+        urgency: str = "UNDECIDED",
+        dependency: Optional[str] = None,
+        incident_id: Optional[str] = None,
+    ) -> str:
         """Fill in and submit the intake form; return the new incident's ID."""
         self.go("#/incidents")
         self.tid("new-incident").click()
@@ -196,7 +238,9 @@ class UITestCase(unittest.TestCase):
         self.assertTrue(incident, "the detail page shows no incident ID")
         return incident
 
-    def log_ticket(self, description: str, severity: str = "", urgency: str = "", teams=(), notify: bool = True):
+    def log_ticket(
+        self, description: str, severity: str = "", urgency: str = "", teams=(), notify: bool = True
+    ):
         """On an incident's page, submit the "Log a ticket" form."""
         form = self.tid("ticket-form")
         self.tid("ticket-description", form).fill(description)

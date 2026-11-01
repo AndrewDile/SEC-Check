@@ -40,8 +40,10 @@ services keep only in-memory state; see [Known limitations](limitations.md).
 to 255 characters). It is `MANUAL` when added through the API. The schema allows `AUTO`, but
 nothing sets it yet.
 
-**Team.** `LEGAL`, `CYBER1` and `CYBER2` are created by the migration and restored by every
-reset. There is no API to add teams.
+**Team.** Created and removed through `/teams`. `LEGAL`, `CYBER1` and `CYBER2` are created by
+the migration and restored by every reset. Tickets, notifications and claims can only use teams
+that exist, and a team they use can't be removed. Team members aren't stored in the database
+yet; the web app keeps them.
 
 **Audit entry.** One row per read or write (see [the audit log](#audit-log)).
 

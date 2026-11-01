@@ -4,7 +4,17 @@
 export type Materiality = 'MATERIAL' | 'IMMATERIAL' | 'UNDECIDED';
 export type Severity = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNDECIDED' | 'RESOLVED';
 export type Urgency = 'URGENT' | 'NOT_URGENT' | 'UNDECIDED' | 'RESOLVED';
-export type ErrorType = 'UUID_EXISTS' | 'UUID_DNE' | 'INVALID_DATA' | 'DP_EXISTS' | 'DP_DNE' | 'TIMEOUT';
+export type ErrorType =
+  | 'UUID_EXISTS'
+  | 'UUID_DNE'
+  | 'INVALID_DATA'
+  | 'DP_EXISTS'
+  | 'DP_DNE'
+  | 'TEAM_EXISTS'
+  | 'TEAM_DNE'
+  | 'USER_EXISTS'
+  | 'USER_DNE'
+  | 'TIMEOUT';
 
 export class DbError extends Error {
   constructor(
@@ -80,8 +90,9 @@ export interface Database {
   notifyTeams(incidentId: string, ticketNumber: number, teams: string[]): Promise<void>;
   claimTicket(incidentId: string, ticketNumber: number, team: string): Promise<void>; // INVALID_DATA if claimed by another team
 
-  // teams (no contract endpoint yet)
-  createTeam(name: string, responsibility?: string): Promise<void>;
+  // /teams. Membership (ADD_USER/REMOVE_USER) isn't stored in the database yet.
+  createTeam(name: string, responsibility?: string): Promise<void>; // TEAM_EXISTS
+  removeTeam(name: string): Promise<void>; // TEAM_DNE; INVALID_DATA while tickets, notifications or claims use it
   listTeams(): Promise<{ name: string; responsibility?: string }[]>;
 
   // /dependencies

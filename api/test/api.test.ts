@@ -285,6 +285,70 @@ describe.skipIf(!API)('Core API pod contract', () => {
     });
   });
 
+  describe('/teams', () => {
+    const teams = (body: Record<string, unknown>) => post('/teams', body);
+    const names = async () => (await teams({ Method: 'LIST' })).body.Team_List;
+
+    it('starts with the default teams after a reset', async () => {
+      expect((await teams({ Method: 'LIST' })).body).toEqual({
+        Team_List: ['LEGAL', 'CYBER1', 'CYBER2'],
+        Status: 'Teams Listed',
+      });
+    });
+
+    it('creates, fetches and removes a team', async () => {
+      expect(await teams({ Team_Name: 'Red Team', Method: 'NEW' })).toEqual({
+        status: 200,
+        body: { Team_Name: 'Red Team', Status: 'Created' },
+      });
+      expect((await teams({ Team_Name: 'Red Team', Method: 'GET' })).body).toEqual({
+        Team_Name: 'Red Team',
+        Status: 'Team Received',
+      });
+      expect(await names()).toContain('Red Team');
+      expect((await teams({ Team_Name: 'Red Team', Method: 'REMOVE' })).body).toEqual({
+        Team_Name: 'Red Team',
+        Status: 'Removed',
+      });
+      expect(await names()).not.toContain('Red Team');
+    });
+
+    it('rejects duplicates, unknown teams and bad input', async () => {
+      expectError(await teams({ Team_Name: 'LEGAL', Method: 'NEW' }), 'TEAM_EXISTS');
+      expectError(await teams({ Team_Name: 'GHOST', Method: 'GET' }), 'TEAM_DNE');
+      expectError(await teams({ Team_Name: 'GHOST', Method: 'REMOVE' }), 'TEAM_DNE');
+      expectError(await teams({ Team_Name: ' padded', Method: 'NEW' }), 'INVALID_DATA');
+      expectError(await teams({ Team_Name: '', Method: 'NEW' }), 'INVALID_DATA');
+      expectError(await teams({ Team_Name: 'X', Method: 'RENAME' }), 'INVALID_DATA');
+      expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER' }), 'INVALID_DATA');
+    });
+
+    it('rejects ADD_USER and REMOVE_USER until the database stores members', async () => {
+      const r = await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'alice' });
+      expectError(r, 'INVALID_DATA');
+      expect(r.body.Message).toMatch(/not stored/);
+    });
+
+    it('lets tickets and the notifier use only existing teams', async () => {
+      await teams({ Team_Name: 'Red Team', Method: 'NEW' });
+      await newIncident();
+      expect((await newTicket(undefined, { Team_list: ['Red Team'] })).status).toBe(200);
+      expectError(await newTicket(undefined, { Team_list: ['Blue Team'] }), 'INVALID_DATA');
+      expectError(
+        await post('/notifier', { Team_Names: ['Blue Team'], Method: 'NOTIFY', Ticket_Number: '102356304331_1' }),
+        'INVALID_DATA',
+      );
+    });
+
+    it('keeps a team that tickets use', async () => {
+      await teams({ Team_Name: 'Red Team', Method: 'NEW' });
+      await newIncident();
+      await newTicket(undefined, { Team_list: ['Red Team'] });
+      expectError(await teams({ Team_Name: 'Red Team', Method: 'REMOVE' }), 'INVALID_DATA');
+      expect(await names()).toContain('Red Team');
+    });
+  });
+
   describe('/test/setup and /test/report (cross-team tester)', () => {
     const report = async (id?: string) => {
       const res = await fetch(`${API}/test/report${id === undefined ? '' : `?session_id=${encodeURIComponent(id)}`}`);

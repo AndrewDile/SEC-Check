@@ -130,11 +130,7 @@ async function init() {
     state.enums = { Materiality: ["MATERIAL", "IMMATERIAL", "UNDECIDED"], Severity: ["HIGH", "MEDIUM", "LOW", "UNDECIDED", "RESOLVED"], Urgency: ["URGENT", "NOT_URGENT", "UNDECIDED", "RESOLVED"], Claim: ["CLAIMED", "UNCLAIMED"] };
   }
   const select = $("#user-select");
-  try {
-    state.users = (await api("GET", "/dev/users")).Users;
-  } catch (e) { state.users = []; }
-  select.innerHTML = `<option value="">Choose a user</option>` +
-    state.users.map(u => `<option value="${esc(u.User)}">${esc(u.User)} (${esc(u.Teams.join(", "))})</option>`).join("");
+  await loadUsers();
   select.addEventListener("change", async () => { await signIn(select.value); route(); });
   const saved = recall("secheck_user");
   if (saved && state.users.some(u => u.User === saved)) { select.value = saved; await signIn(saved); }
@@ -143,6 +139,25 @@ async function init() {
   let resizeTimer;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => clampText(document), 150); });
   route();
+}
+
+/** Fill the sign-in picker; each user is shown with their current teams. */
+async function loadUsers() {
+  const select = $("#user-select");
+  try {
+    state.users = (await api("GET", "/dev/users")).Users;
+  } catch (e) { state.users = []; }
+  const current = select.value || state.user || "";
+  select.innerHTML = `<option value="">Choose a user</option>` +
+    state.users.map(u => `<option value="${esc(u.User)}">${esc(u.User)} (${esc(u.Teams.join(", ") || "no team")})</option>`).join("");
+  select.value = current;
+}
+
+/** After teams or memberships change: reload the team list, the signed-in user's teams and the picker. */
+async function refreshTeams() {
+  state.teams = (await api("GET", "/teams")).Teams;
+  if (state.user) state.session = await api("GET", "/session");
+  await loadUsers();
 }
 
 async function signIn(name) {
@@ -182,6 +197,7 @@ function route() {
   if (page === "incidents" && parts[1]) return viewIncident(parts[1]);
   if (page === "queue") return viewQueue();
   if (page === "dependencies") return viewDependencies();
+  if (page === "teams") return viewTeams();
   return viewIncidents();
 }
 
@@ -640,6 +656,123 @@ async function viewDependencies() {
     $("#dep-check-result").textContent = `${r.dp_name}: ${r.status}.`;
   });
   loadList();
+}
+
+// ------------------------------------------------------------------ teams
+async function viewTeams() {
+  $main.innerHTML = `
+    <div class="page-head"><h1>Teams</h1></div>
+    <p class="muted">Teams are assigned tickets, get notified and claim tickets. A new team can be used on tickets as soon as it exists.</p>
+    <div class="cols">
+      <section class="panel" id="team-list" data-testid="team-list" aria-labelledby="team-list-heading">
+        <h2 id="team-list-heading" tabindex="-1">All teams</h2><div id="team-cards"><p class="muted">Loading…</p></div>
+      </section>
+      <aside>
+        <section class="panel"><h2>Create a team</h2>
+          <form id="team-create" data-testid="team-create-form">
+            <label>Team name <span class="hint">Up to 64 characters</span>
+              <input name="Team_Name" required maxlength="64" autocomplete="off" data-testid="team-create-name"></label>
+            <button class="primary" data-testid="team-create-submit">Create team</button>
+          </form>
+        </section>
+      </aside>
+    </div>`;
+  settle("Teams");
+  const cards = $("#team-cards");
+
+  // Re-render the list, then put focus back somewhere sensible, since the element that had it is gone.
+  const load = async (focus) => {
+    cards.setAttribute("aria-busy", "true");
+    let data;
+    try {
+      data = await api("GET", "/team-members");
+    } catch (err) {
+      cards.removeAttribute("aria-busy");
+      cards.innerHTML = `<p class="muted">The teams aren't available: ${esc(err.data?.Message || err.message)}</p>`;
+      return;
+    }
+    cards.removeAttribute("aria-busy");
+    if (!data.Teams.length) {
+      cards.innerHTML = `<p class="muted" data-testid="teams-empty">No teams yet. Create the first one on the right.</p>`;
+    } else {
+      cards.innerHTML = data.Teams.map((t, i) => teamCard(t, data.Users, i)).join("");
+      wireTeamCards(cards, load);
+    }
+    if (focus) focus();
+  };
+
+  onSubmit($("#team-create"), async f => {
+    const name = f.Team_Name.value.trim();
+    const r = await api("POST", "/teams", { Team_Name: name });
+    f.reset();
+    await refreshTeams();
+    await load(() => focusTeam(r.Team_Name));
+    ok(`Created team ${r.Team_Name}.`);
+  });
+  await load();
+}
+
+function teamCard(team, users, index) {
+  const name = team.Team_Name;
+  const others = users.filter(u => !team.Members.includes(u));
+  return `<section class="team" data-testid="team-card" data-team="${esc(name)}" aria-labelledby="team-${index}">
+    <div class="team-head">
+      <h3 id="team-${index}" tabindex="-1" data-testid="team-name">${esc(name)}</h3>
+      <button type="button" class="danger" data-testid="team-remove" data-team="${esc(name)}">Remove team</button>
+    </div>
+    ${team.Members.length
+      ? `<ul class="members" aria-label="Members of ${esc(name)}">${team.Members.map(u => `
+          <li data-testid="team-member" data-user="${esc(u)}"><span>${esc(u)}</span>
+            <button type="button" data-testid="team-member-remove" data-team="${esc(name)}" data-user="${esc(u)}" aria-label="Remove ${esc(u)} from ${esc(name)}">Remove</button></li>`).join("")}</ul>`
+      : `<p class="muted" data-testid="team-no-members">No members yet.</p>`}
+    ${others.length ? `<form class="inline-form" data-testid="team-add-form" data-team="${esc(name)}">
+      <label>Add a member to ${esc(name)} <select name="User" data-testid="team-add-user">${others.map(u => `<option>${esc(u)}</option>`).join("")}</select></label>
+      <button data-testid="team-add-submit">Add member</button>
+    </form>` : `<p class="muted">Every user is a member.</p>`}
+  </section>`;
+}
+
+function teamSection(name) {
+  return [...document.querySelectorAll('[data-testid="team-card"]')].find(el => el.dataset.team === name);
+}
+function focusTeam(name) {
+  const heading = teamSection(name)?.querySelector("h3");
+  if (heading) heading.focus();
+}
+
+function wireTeamCards(root, load) {
+  root.querySelectorAll('form[data-testid="team-add-form"]').forEach(f => onSubmit(f, async () => {
+    const team = f.dataset.team, user = f.User.value;
+    await api("POST", `/teams/${encodeURIComponent(team)}/members`, { User: user });
+    await refreshTeams();
+    await load(() => (teamSection(team)?.querySelector("select") || teamSection(team)?.querySelector("h3"))?.focus());
+    ok(`Added ${user} to ${team}.`);
+  }));
+  root.querySelectorAll('button[data-testid="team-member-remove"]').forEach(b => b.addEventListener("click", async () => {
+    const { team, user } = b.dataset;
+    b.disabled = true;
+    try {
+      await api("DELETE", `/teams/${encodeURIComponent(team)}/members/${encodeURIComponent(user)}`);
+      await refreshTeams();
+      await load(() => focusTeam(team));
+      ok(`Removed ${user} from ${team}.`);
+    } catch (err) { b.disabled = false; fail(err); }
+  }));
+  root.querySelectorAll('button[data-testid="team-remove"]').forEach(b => b.addEventListener("click", async () => {
+    const team = b.dataset.team;
+    if (b.dataset.armed !== "1") {
+      b.dataset.armed = "1"; b.textContent = "Confirm remove";
+      announce(`Press Confirm remove to remove team ${team}.`);
+      return;
+    }
+    b.disabled = true;
+    try {
+      await api("DELETE", `/teams/${encodeURIComponent(team)}`);
+      await refreshTeams();
+      await load(() => $("#team-list-heading").focus());
+      ok(`Removed team ${team}.`);
+    } catch (err) { b.disabled = false; fail(err); }
+  }));
 }
 
 init();

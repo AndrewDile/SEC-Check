@@ -1,8 +1,8 @@
 """Logging, updating, notifying and claiming tickets on an incident's page."""
+
 import unittest
 
 from playwright.sync_api import expect
-
 from ui_base import UITestCase
 
 
@@ -10,10 +10,15 @@ class Tickets(UITestCase):
     def setUp(self):
         super().setUp()
         self.iid = self.report_incident("Credential stuffing against the customer portal.")
-        self.number = self.iid + "_2"      # _1 is the intake entry
+        self.number = self.iid + "_2"  # _1 is the intake entry
 
     def test_log_a_ticket(self):
-        self.log_ticket("Lock the affected accounts.", severity="HIGH", urgency="URGENT", teams=["CYBER1", "LEGAL"])
+        self.log_ticket(
+            "Lock the affected accounts.",
+            severity="HIGH",
+            urgency="URGENT",
+            teams=["CYBER1", "LEGAL"],
+        )
         self.expect_notice("notified")
         item = self.ticket_item(self.number)
         expect(item.get_by_test_id("ticket-body")).to_have_text("Lock the affected accounts.")
@@ -28,7 +33,7 @@ class Tickets(UITestCase):
     def test_ticket_details_are_required(self):
         self.tid("ticket-submit").click()
         expect(self.tid("ticket-form")).to_be_visible()
-        self.assertEqual(len(self.core.log(self.iid)), 1)      # only the intake entry
+        self.assertEqual(len(self.core.log(self.iid)), 1)  # only the intake entry
 
     def test_update_a_ticket_adds_a_version(self):
         self.log_ticket("First assessment.", severity="LOW", teams=["CYBER1"])
@@ -39,11 +44,13 @@ class Tickets(UITestCase):
         item.get_by_test_id("update-submit").click()
         self.expect_notice("new version %s_2" % self.number)
         item = self.ticket_item(self.number)
-        expect(item.get_by_test_id("ticket-body")).to_have_text("Revised assessment: wider than thought.")
+        expect(item.get_by_test_id("ticket-body")).to_have_text(
+            "Revised assessment: wider than thought."
+        )
         expect(item.get_by_test_id("ticket-severity-tag")).to_have_text("Severity: High")
         stored = self.core.ticket(self.iid, self.number)
         self.assertEqual(stored["Ticket_ID"], self.number + "_2")
-        self.assertEqual(stored["Team_List"], ["CYBER1"])     # kept from version 1
+        self.assertEqual(stored["Team_List"], ["CYBER1"])  # kept from version 1
 
     def test_full_log_lists_every_version(self):
         self.log_ticket("Version one.")
@@ -60,7 +67,9 @@ class Tickets(UITestCase):
         expect(entries.nth(2)).to_have_attribute("data-ticket-id", self.number + "_2")
         expect(entries.nth(1)).to_contain_text("Version one.")
         expect(entries.nth(2)).to_contain_text("Version two.")
-        self.assertEqual(self.core.log(self.iid), [self.iid + "_1_1", self.number + "_1", self.number + "_2"])
+        self.assertEqual(
+            self.core.log(self.iid), [self.iid + "_1_1", self.number + "_1", self.number + "_2"]
+        )
 
     def test_notify_teams_about_a_ticket(self):
         self.log_ticket("Needs legal review.", notify=False)
@@ -73,7 +82,7 @@ class Tickets(UITestCase):
     def test_claim_a_ticket(self):
         self.log_ticket("Contain the portal.", teams=["CYBER1"])
         item = self.ticket_item(self.number)
-        expect(item.get_by_test_id("claim-team")).to_have_value("CYBER1")   # alice is in CYBER1
+        expect(item.get_by_test_id("claim-team")).to_have_value("CYBER1")  # alice is in CYBER1
         item.get_by_test_id("claim-submit").click()
         self.expect_notice("for CYBER1")
         item = self.ticket_item(self.number)

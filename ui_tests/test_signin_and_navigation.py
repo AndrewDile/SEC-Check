@@ -1,8 +1,8 @@
 """Signing in and moving around the app."""
+
 import unittest
 
 from playwright.sync_api import expect
-
 from ui_base import UITestCase
 
 

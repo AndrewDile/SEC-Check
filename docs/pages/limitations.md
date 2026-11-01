@@ -20,9 +20,11 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
   entries. `verifyAuditChain()` exists but no endpoint calls it.
 - **Resets erase the audit history.** `/reset` and `/test/setup` truncate the audit log too.
 - **Only one company.** Every dependency belongs to `company_id: "default"`.
-- **Fixed teams.**
-    - The teams are `LEGAL`, `CYBER1` and `CYBER2`, and there's no API to add or change them.
-    - The web app's `teams` setting must match them.
+- **Team members aren't in the database.**
+    - Teams are created through `/teams`, but `ADD_USER`/`REMOVE_USER` are rejected until the
+      database has a members table. The web app keeps memberships in a file instead.
+    - A team removed or reset through the Core API directly leaves its memberships in that file;
+      they're ignored while the team doesn't exist, and come back if it's created again.
 - **Dependencies are bare names.** They have no version, CPE, PURL or CIK, so the worker can
   match only on names, and EDGAR's CIK match never fires.
 - **No filing deadline.** The 8-K view's `Filing_Deadline` is always `null` (gap G-8).

@@ -1,31 +1,42 @@
 """Reporting, finding and editing incidents."""
+
 import unittest
 
 from playwright.sync_api import expect
-
 from ui_base import UITestCase
 
 
 class ReportIncident(UITestCase):
     def test_report_an_incident_with_all_fields(self):
-        iid = self.report_incident("Ransomware encrypted the billing database.",
-                                   materiality="MATERIAL", severity="HIGH", urgency="URGENT")
+        iid = self.report_incident(
+            "Ransomware encrypted the billing database.",
+            materiality="MATERIAL",
+            severity="HIGH",
+            urgency="URGENT",
+        )
         # The detail page shows what was entered...
         expect(self.tid("incident-materiality")).to_have_text("Material")
         expect(self.tid("incident-severity")).to_have_text("High")
         expect(self.tid("incident-urgency")).to_have_text("Urgent")
-        expect(self.tid("incident-description")).to_have_text("Ransomware encrypted the billing database.")
+        expect(self.tid("incident-description")).to_have_text(
+            "Ransomware encrypted the billing database."
+        )
         # ...the intake was logged as the first ticket...
         expect(self.ticket_item(iid + "_1")).to_contain_text("INTAKE")
         # ...and the Core API stored it.
         stored = self.core.incident(iid)
-        self.assertEqual((stored["Materiality"], stored["Severity"], stored["Urgency"]), ("MATERIAL", "HIGH", "URGENT"))
+        self.assertEqual(
+            (stored["Materiality"], stored["Severity"], stored["Urgency"]),
+            ("MATERIAL", "HIGH", "URGENT"),
+        )
         self.assertEqual(stored["Description"], "Ransomware encrypted the billing database.")
 
     def test_chosen_incident_id_is_used(self):
         iid = self.report_incident("Phishing email reported.", incident_id="555000111222")
         self.assertEqual(iid, "555000111222")
-        self.assertEqual(self.core.incident("555000111222")["Description"], "Phishing email reported.")
+        self.assertEqual(
+            self.core.incident("555000111222")["Description"], "Phishing email reported."
+        )
 
     def test_description_is_required(self):
         self.tid("new-incident").click()
@@ -64,10 +75,19 @@ class FindIncident(UITestCase):
         expect(self.tid("incident-id")).to_have_text(iid)
 
     def test_list_shows_incidents_created_through_the_core_api(self):
-        self.core.ok("/incidents", {"Incident_ID": "111222333444", "Method": "NEW", "Timestamp": "2026-10-01T12:00:00Z",
-                                    "Description": "Reported by the ingestion worker."})
+        self.core.ok(
+            "/incidents",
+            {
+                "Incident_ID": "111222333444",
+                "Method": "NEW",
+                "Timestamp": "2026-10-01T12:00:00Z",
+                "Description": "Reported by the ingestion worker.",
+            },
+        )
         self.page.reload()
-        expect(self.tid("incident-row").filter(has_text="Reported by the ingestion worker.")).to_have_count(1)
+        expect(
+            self.tid("incident-row").filter(has_text="Reported by the ingestion worker.")
+        ).to_have_count(1)
 
     def test_open_by_id(self):
         iid = self.report_incident("Open me by ID.")

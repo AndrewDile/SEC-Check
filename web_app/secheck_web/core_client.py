@@ -31,6 +31,7 @@ PATH_TICKETS = "/tickets"
 PATH_NOTIFIER = "/notifier"
 PATH_LOGS = "/logs"
 PATH_DEPENDENCIES = "/dependencies"
+PATH_TEAMS = "/teams"
 
 # Every call the Web App makes carries this header so a Core API that forwards
 # external calls to the Web App (gateway mode) does not forward these back,
@@ -351,3 +352,28 @@ class CoreClient:
     @staticmethod
     def dp_exists(match_response: Dict[str, Any]) -> bool:
         return str(match_response.get("status", "")).strip().lower() == "exists"
+
+    # ------------------------------------------------------------------ teams
+    # NEW, REMOVE, ADD_USER and REMOVE_USER are the spec's methods; GET and LIST were added
+    # so the Web App can read teams back. ADD_USER/REMOVE_USER and GET's "Members" are only
+    # used once the database stores members (membership.CoreMembershipStore).
+    def team_list(self, steps) -> List[str]:
+        data = self._post(PATH_TEAMS, {"Method": "LIST"}, steps)
+        return [str(t) for t in data.get("Team_List", [])]
+
+    def team_get(self, steps, team_name: str) -> Dict[str, Any]:
+        return self._post(PATH_TEAMS, {"Team_Name": team_name, "Method": "GET"}, steps)
+
+    def team_new(self, steps, team_name: str) -> Dict[str, Any]:
+        return self._post(PATH_TEAMS, {"Team_Name": team_name, "Method": "NEW"}, steps)
+
+    def team_remove(self, steps, team_name: str) -> Dict[str, Any]:
+        return self._post(PATH_TEAMS, {"Team_Name": team_name, "Method": "REMOVE"}, steps)
+
+    def team_add_user(self, steps, team_name: str, username: str) -> Dict[str, Any]:
+        body = {"Team_Name": team_name, "Method": "ADD_USER", "Username": username}
+        return self._post(PATH_TEAMS, body, steps)
+
+    def team_remove_user(self, steps, team_name: str, username: str) -> Dict[str, Any]:
+        body = {"Team_Name": team_name, "Method": "REMOVE_USER", "Username": username}
+        return self._post(PATH_TEAMS, body, steps)

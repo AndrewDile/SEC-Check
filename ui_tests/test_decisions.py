@@ -1,8 +1,8 @@
 """Recording materiality decisions and the Form 8-K view."""
+
 import unittest
 
 from playwright.sync_api import expect
-
 from ui_base import UITestCase
 
 
@@ -26,7 +26,9 @@ class Decisions(UITestCase):
         expect(self.tid("open-8k")).to_be_disabled()
 
     def test_record_material_decision(self):
-        self.record("MATERIAL", "Records of 40,000 customers exposed.", severity="HIGH", urgency="URGENT")
+        self.record(
+            "MATERIAL", "Records of 40,000 customers exposed.", severity="HIGH", urgency="URGENT"
+        )
         self.expect_notice("Decision recorded")
         expect(self.tid("incident-materiality")).to_have_text("Material")
         expect(self.tid("incident-severity")).to_have_text("High")
@@ -34,7 +36,10 @@ class Decisions(UITestCase):
         # The decision is kept as an audit entry in the ticket list and the Core API.
         expect(self.tid("ticket").filter(has_text="DECISION by alice")).to_have_count(1)
         stored = self.core.incident(self.iid)
-        self.assertEqual((stored["Materiality"], stored["Severity"], stored["Urgency"]), ("MATERIAL", "HIGH", "URGENT"))
+        self.assertEqual(
+            (stored["Materiality"], stored["Severity"], stored["Urgency"]),
+            ("MATERIAL", "HIGH", "URGENT"),
+        )
 
     def test_record_immaterial_decision(self):
         self.record("IMMATERIAL", "No customer data involved.", severity="LOW")

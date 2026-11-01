@@ -12,7 +12,7 @@ From the repo root, alongside the Core API (`api/`):
 docker compose up --build
 ```
 
-Open **http://localhost:8000/app/** and pick a user in the top bar. In `docker-compose.yml` the Web App is the `web` service; it reaches the Core API at `http://api:3001`.
+Open **http://localhost/app/** (served through Caddy) and pick a user in the top bar. In `docker-compose.yml` the Web App is the `web` service; it reaches the Core API at `http://api:3001`.
 
 On its own:
 
@@ -57,8 +57,10 @@ Useful URLs:
 | `host` / `port` | `SECHECK_HOST` / `SECHECK_PORT` | `127.0.0.1` / `8000` (container: `0.0.0.0` / `8000`) |
 | `core_api_url` | `CORE_API_URL` | `http://127.0.0.1:3001` (container: `http://api:3001`) |
 | `core_timeout_seconds` | `CORE_TIMEOUT_SECONDS` | `10` |
-| `teams` | `SECHECK_TEAMS` (JSON list) | `["LEGAL","CYBER1","CYBER2"]` |
-| `users` | `SECHECK_USERS` (JSON object) | 4 sample users + `core-gateway` |
+| `users` | `SECHECK_USERS` (JSON object) | 4 sample users + `core-gateway`, with the teams each starts in |
+| `membership_source` | `SECHECK_MEMBERSHIP_SOURCE` | `local` (see Teams below) |
+| `membership_file` | `SECHECK_MEMBERSHIP_FILE` | `data/memberships.json` (container: the `web-data` volume) |
+| `teams` | `SECHECK_TEAMS` | No longer used: teams come from the Core API |
 | `hidden_users` | n/a | `["core-gateway"]`: service accounts left out of the sign-in picker |
 | `decision_teams` | `SECHECK_DECISION_TEAMS` (JSON list) | `[]` = any signed-in user may record decisions |
 | `auth_mode` | `SECHECK_AUTH_MODE` | `dev` |
@@ -66,12 +68,28 @@ Useful URLs:
 
 **Sign-in is a development placeholder.** Users pick a name; the browser sends it as an `X-User` header (and a `secheck_session` cookie). There is no password, so don't expose the container publicly until real authentication is chosen (gap G-6). `core-gateway` is the service user a Core API signs in as when it forwards calls to the Web App (see "gateway mode" in `../Web Dev/README.md`).
 
+## Teams
+
+The **Teams** page creates and removes teams and adds or removes members.
+
+- **Teams** live in the Core API (`/teams`): the web app reads them with `LIST` and creates or
+  removes them with `NEW`/`REMOVE`. Tickets, notifications, claims and queues accept only
+  existing teams. A team that tickets use can't be removed.
+- **Members** aren't stored in the database yet, so the web app keeps them
+  (`secheck_web/membership.py`, `LocalMembershipStore`): seeded from each user's teams in
+  `settings.json`, then saved to `membership_file`. When the database stores members, set
+  `membership_source` to `core`; `CoreMembershipStore` then uses `/teams` `ADD_USER`,
+  `REMOVE_USER` and `GET` (with `Members`), and nothing else needs to change.
+- **Extension routes:** `GET /team-members`, `POST /teams`, `DELETE /teams/{Team_Name}`,
+  `POST /teams/{Team_Name}/members`, `DELETE /teams/{Team_Name}/members/{User}`, and (dev only)
+  `POST /dev/reset-memberships`.
+
 ## Layout
 
 ```
 web_app/
   Dockerfile, .dockerignore     container build
-  config/settings.json          ports, Core URL, teams, dev users, who may record decisions
+  config/settings.json          ports, Core URL, dev users and their starting teams, who may decide
   contracts/webapp_api.*        Web App OpenAPI contract the server runs on (generated; don't hand-edit)
   secheck_web/
     __main__.py                 entry point: python -m secheck_web

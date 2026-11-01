@@ -19,6 +19,7 @@ from .config import Settings
 from .core_client import CoreClient
 from .errors import WebAppError, invalid
 from .handlers import EXTENSIONS, OPERATIONS, Context, Request, User
+from .membership import make_membership_store
 from .validation import Spec, coerce_query
 from .web import Response, Router, json_response, parse_cookies, redirect, static_file
 
@@ -40,6 +41,8 @@ class WebApp:
             settings.core_api_url, settings.core_timeout_seconds, settings.core_use_system_proxy
         )
         self.ctx = context or Context(settings=settings, core=self.core)
+        if self.ctx.memberships is None:
+            self.ctx.memberships = make_membership_store(settings, self.ctx.core)
         self.router = Router()
         self.missing_handlers: List[str] = []
         self.unused_handlers: List[str] = []
@@ -126,7 +129,7 @@ class WebApp:
             raise WebAppError("UNAUTHORIZED", "Sign in to continue.")
         if name not in self.settings.users:
             raise WebAppError("UNAUTHORIZED", f"Unknown user {name}.")
-        return User(name=name, teams=list(self.settings.users[name]))
+        return User(name=name, teams=self.ctx.memberships.teams_of(name))
 
     @staticmethod
     def _parse_body(body: bytes) -> Any:

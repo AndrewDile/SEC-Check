@@ -8,12 +8,12 @@ and, when axe-core can be loaded, a full axe scan (WCAG 2.x A/AA rules).
 Still manual: colour-alone and alt-text *meaning* (view the page in grayscale), and a pass with a
 screen reader (NVDA on Windows). See ui_tests/README.md.
 """
+
 import os
 import unittest
 import urllib.request
 
 from playwright.sync_api import expect
-
 from ui_base import UITestCase
 
 # Contrast helpers run in the page. Colours come from getComputedStyle (rgb()/rgba()).
@@ -70,7 +70,9 @@ window.__a11y = (() => {
 })();
 """
 
-AXE_URL = os.environ.get("AXE_URL", "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js")
+AXE_URL = os.environ.get(
+    "AXE_URL", "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js"
+)
 
 
 class Accessibility(UITestCase):
@@ -78,7 +80,9 @@ class Accessibility(UITestCase):
         super().setUp()
         # One incident with every part of the page in use: a ticket, a material decision, the full log.
         self.core.ok("/dependencies", {"dp_name": "okta sso", "method": "NEW"})
-        self.iid = self.report_incident("Ransomware encrypted the billing database.", dependency="okta sso")
+        self.iid = self.report_incident(
+            "Ransomware encrypted the billing database.", dependency="okta sso"
+        )
         self.log_ticket("Contain the billing database.", severity="HIGH", teams=["CYBER1"])
         form = self.tid("decision-form")
         self.tid("decision-materiality", form).select_option("MATERIAL")
@@ -103,6 +107,9 @@ class Accessibility(UITestCase):
         self.go("#/dependencies")
         expect(self.tid("dependency-row")).to_have_count(1)
         yield "dependencies"
+        self.go("#/teams")
+        expect(self.tid("team-card").first).to_be_visible()
+        yield "teams"
         self.go("#/incidents/999999999999")
         self.expect_notice("UUID_DNE", kind="error")
         yield "error notice"
@@ -114,12 +121,17 @@ class Accessibility(UITestCase):
     def tab_to(self, test_id, presses=80):
         for _ in range(presses):
             self.page.keyboard.press("Tab")
-            if self.page.evaluate("document.activeElement && document.activeElement.dataset.testid") == test_id:
+            if (
+                self.page.evaluate(
+                    "document.activeElement && document.activeElement.dataset.testid"
+                )
+                == test_id
+            ):
                 return
         self.fail("couldn't reach %s with the Tab key" % test_id)
 
     # ------------------------------------------------------------------ checklist items
-    def test_text_contrast(self):                                    # checklist 2, SC 1.4.3
+    def test_text_contrast(self):  # checklist 2, SC 1.4.3
         problems = {}
         for name in self.pages():
             bad = self.js("textContrast")
@@ -127,7 +139,7 @@ class Accessibility(UITestCase):
                 problems[name] = bad
         self.assertEqual(problems, {})
 
-    def test_form_field_borders_are_visible(self):                  # SC 1.4.11
+    def test_form_field_borders_are_visible(self):  # SC 1.4.11
         problems = {}
         for name in self.pages():
             bad = self.js("fieldBorders")
@@ -135,7 +147,7 @@ class Accessibility(UITestCase):
                 problems[name] = bad
         self.assertEqual(problems, {})
 
-    def test_every_control_has_a_label(self):                       # checklist 11, SC 1.3.1 / 4.1.2
+    def test_every_control_has_a_label(self):  # checklist 11, SC 1.3.1 / 4.1.2
         problems = {}
         for name in self.pages():
             bad = self.js("unnamedControls")
@@ -143,16 +155,18 @@ class Accessibility(UITestCase):
                 problems[name] = bad
         self.assertEqual(problems, {})
 
-    def test_images_have_alt_text(self):                            # checklist 3, SC 1.1.1
+    def test_images_have_alt_text(self):  # checklist 3, SC 1.1.1
         for name in self.pages():
             self.assertEqual(self.js("imagesWithoutAlt"), [], name)
         expect(self.page.locator("img.footer-logo")).to_have_attribute("alt", "SEC-Check logo")
 
-    def test_focus_is_always_visible(self):                         # checklist 9, SC 2.4.7 / 1.4.11
+    def test_focus_is_always_visible(self):  # checklist 9, SC 2.4.7 / 1.4.11
         problems = []
         for name in self.pages():
             self.page.add_script_tag(content=JS_HELPERS)
-            self.page.locator("footer").click(position={"x": 1, "y": 1})   # start tabbing from the page, not a field
+            self.page.locator("footer").click(
+                position={"x": 1, "y": 1}
+            )  # start tabbing from the page, not a field
             self.page.keyboard.press("Shift+Tab")
             for _ in range(100):
                 self.page.keyboard.press("Tab")
@@ -165,15 +179,24 @@ class Accessibility(UITestCase):
                     break
         self.assertEqual(problems, [])
 
-    def test_each_page_has_one_h1_and_its_own_title(self):          # screen-reader navigation
+    def test_each_page_has_one_h1_and_its_own_title(self):  # screen-reader navigation
         titles = []
         for name in self.pages():
             expect(self.page.locator("main h1")).to_have_count(1)
             titles.append(self.page.title())
-        self.assertEqual(titles, ["Incidents – SEC-Check", "Incident %s – SEC-Check" % self.iid, "Team queue – SEC-Check",
-                                  "Dependencies – SEC-Check", "Incident not found – SEC-Check"])
+        self.assertEqual(
+            titles,
+            [
+                "Incidents – SEC-Check",
+                "Incident %s – SEC-Check" % self.iid,
+                "Team queue – SEC-Check",
+                "Dependencies – SEC-Check",
+                "Teams – SEC-Check",
+                "Incident not found – SEC-Check",
+            ],
+        )
 
-    def test_focus_moves_to_new_content(self):                      # checklist 12, SC 2.4.3
+    def test_focus_moves_to_new_content(self):  # checklist 12, SC 2.4.3
         self.tid("nav-dependencies").click()
         expect(self.page.locator("main h1")).to_be_focused()
         self.tid("nav-incidents").click()
@@ -183,7 +206,7 @@ class Accessibility(UITestCase):
         self.tid("open-8k").click()
         expect(self.tid("form-8k").locator("h2")).to_be_focused()
 
-    def test_incidents_open_from_a_real_link(self):                 # checklist 10 and 12
+    def test_incidents_open_from_a_real_link(self):  # checklist 10 and 12
         self.go("#/incidents")
         link = self.tid("incident-link").first
         expect(link).to_have_attribute("href", "#/incidents/" + self.iid)
@@ -191,12 +214,26 @@ class Accessibility(UITestCase):
         self.page.keyboard.press("Enter")
         expect(self.tid("incident-id")).to_have_text(self.iid)
 
-    def test_remove_confirmation_is_announced(self):                # checklist 12
+    def test_teams_page_moves_focus_after_changes(self):  # checklist 12, SC 2.4.3
+        self.tid("nav-teams").click()
+        expect(self.page.locator("main h1")).to_be_focused()
+        self.tid("team-create-name").fill("Accessibility Team")
+        self.page.keyboard.press("Enter")  # submit with the keyboard
+        self.expect_notice("Created team Accessibility Team.")
+        card = self.page.locator('[data-testid="team-card"][data-team="Accessibility Team"]')
+        expect(self.tid("team-name", card)).to_be_focused()
+        self.tid("team-add-user", card).focus()
+        self.page.keyboard.press("Tab")
+        self.page.keyboard.press("Enter")  # "Add member" by keyboard
+        self.expect_notice("Added alice to Accessibility Team.")
+        expect(self.tid("team-add-user", card)).to_be_focused()
+
+    def test_remove_confirmation_is_announced(self):  # checklist 12
         self.go("#/dependencies")
         self.tid("dependency-remove").click()
         expect(self.tid("announcer")).to_have_text("Press Confirm remove to remove okta sso.")
 
-    def test_report_an_incident_with_the_keyboard_only(self):       # checklist 10, SC 2.1.1
+    def test_report_an_incident_with_the_keyboard_only(self):  # checklist 10, SC 2.1.1
         self.go("#/incidents")
         self.page.locator("footer").click(position={"x": 1, "y": 1})
         self.tab_to("new-incident")
@@ -208,19 +245,30 @@ class Accessibility(UITestCase):
         self.expect_notice("created")
         expect(self.tid("incident-description")).to_have_text("Reported without a mouse.")
 
-    def test_axe_finds_no_wcag_violations(self):                    # checklist 2, 3, 11 (as Axe DevTools would)
+    def test_axe_finds_no_wcag_violations(self):  # checklist 2, 3, 11 (as Axe DevTools would)
         try:
             with urllib.request.urlopen(AXE_URL, timeout=10) as r:
                 axe_js = r.read().decode("utf-8")
         except Exception as exc:  # noqa: BLE001
-            self.skipTest("axe-core couldn't be downloaded from %s (%s); set AXE_URL to a local copy" % (AXE_URL, exc))
+            self.skipTest(
+                "axe-core couldn't be downloaded from %s (%s); set AXE_URL to a local copy"
+                % (AXE_URL, exc)
+            )
         problems = {}
         for name in self.pages():
             self.page.add_script_tag(content=axe_js)
             result = self.page.evaluate("""() => axe.run(document, {
                 runOnly: {type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]}})""")
-            found = ["%s (%s): %s at %s" % (v["id"], v["impact"], v["help"], ", ".join(str(n["target"]) for n in v["nodes"][:3]))
-                     for v in result["violations"]]
+            found = [
+                "%s (%s): %s at %s"
+                % (
+                    v["id"],
+                    v["impact"],
+                    v["help"],
+                    ", ".join(str(n["target"]) for n in v["nodes"][:3]),
+                )
+                for v in result["violations"]
+            ]
             if found:
                 problems[name] = found
         self.assertEqual(problems, {})

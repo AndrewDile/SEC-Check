@@ -162,6 +162,7 @@ app.post('/tickets', async (req, res) => {
     urgency: oneOf(b.Ticket_urgency, URGENCY, 'Ticket_urgency'),
     teams: teamList(b.Team_list, 'Team_list'),
   };
+  if (fields.teams?.length) await requireTeams(fields.teams, 'Team_list');
   let ticket: Ticket;
   let status: string;
   switch (b.Method) {
@@ -193,9 +194,7 @@ app.post('/notifier', async (req, res) => {
   if (!teams?.length) invalid('Team_Names invalid data type');
   const ref = ticketRef(b.Ticket_Number);
   if (ref.version !== undefined) invalid('Ticket_Number must be a ticket number without a version.');
-  const known = new Set((await db.listTeams()).map((t) => t.name));
-  const unknown = teams.filter((t) => !known.has(t));
-  if (unknown.length) invalid(`Unknown team: ${unknown.join(', ')}.`);
+  await requireTeams(teams, 'Team_Names');
   let status: string;
   switch (b.Method) {
     case 'NOTIFY':
@@ -228,6 +227,51 @@ app.post('/logs', async (req, res) => {
     Ticket_ID_List: await db.listTicketIds(id),
     Status: 'Log Retrieved',
   });
+});
+
+// Teams: only teams created here (or the defaults /reset restores) can be used on tickets and in /notifier.
+// GET and LIST are additions to the spec's NEW, REMOVE, ADD_USER, REMOVE_USER so teams can be read back.
+// Membership isn't stored in the database yet, so ADD_USER and REMOVE_USER are rejected for now
+// (the web app keeps memberships until then).
+
+async function requireTeams(names: string[], field: string) {
+  const known = new Set((await db.listTeams()).map((t) => t.name));
+  const unknown = names.filter((t) => !known.has(t));
+  if (unknown.length) invalid(`${field} has unknown team: ${unknown.join(', ')}. Create it with /teams first.`);
+}
+
+function teamName(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value !== value.trim() || value.length > 64)
+    invalid('Team_Name must be 1-64 characters without leading or trailing spaces.');
+  return value;
+}
+
+app.post('/teams', async (req, res) => {
+  const b = req.body ?? {};
+  if (b.Method === 'LIST')
+    return res.json({ Team_List: (await db.listTeams()).map((t) => t.name), Status: 'Teams Listed' });
+  const name = teamName(b.Team_Name);
+  switch (b.Method) {
+    case 'NEW':
+      await db.createTeam(name);
+      return res.json({ Team_Name: name, Status: 'Created' });
+    case 'REMOVE':
+      await db.removeTeam(name);
+      return res.json({ Team_Name: name, Status: 'Removed' });
+    case 'GET': {
+      const team = (await db.listTeams()).find((t) => t.name === name);
+      if (!team) throw new DbError('TEAM_DNE', 'The team name does not exist in the system.');
+      return res.json({ Team_Name: name, Status: 'Team Received' });
+    }
+    case 'ADD_USER':
+    case 'REMOVE_USER': {
+      if (typeof b.Username !== 'string' || !b.Username) invalid(`Username is required when Method is ${b.Method}.`);
+      await requireTeams([name], 'Team_Name');
+      return invalid('Team membership is not stored in the database yet.');
+    }
+    default:
+      invalid('Method must be one of NEW, REMOVE, ADD_USER, REMOVE_USER, GET, LIST.');
+  }
 });
 
 // The spec spells it both ways

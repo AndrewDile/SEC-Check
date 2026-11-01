@@ -6,12 +6,12 @@
 |---|---|---|---|
 | Tester self-tests | `tester/tests/` | 30 | Nothing. Runs against the tester's own mock system |
 | Core API database tests | `api/test/db.test.ts` | 16 | A MySQL it can wipe. Skips unless `DB_USER` is set |
-| Core API HTTP tests | `api/test/api.test.ts` | 20 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
+| Core API HTTP tests | `api/test/api.test.ts` | 26 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
 | Cross-team suite | `tester/secheck_tester/suite.py` | 54 | The whole stack. Run through the tester against `/system` |
+| Web app browser tests | `ui_tests/` | 71 | The stack and Playwright (`pip install -r ui_tests/requirements.txt`). Not in `./test.sh`; see `ui_tests/README.md` |
 
 **Not covered by any test in this repo:**
 
-- **Web app:** its tests (a mock Core API and unit tests) live in the pod's `Web Dev/` folder.
 - **Ingestion worker and notification service:** no tests at all.
 
 ## `./test.sh`

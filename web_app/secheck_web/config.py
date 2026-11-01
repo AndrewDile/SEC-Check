@@ -24,7 +24,9 @@ class Settings:
     core_api_url: str = "http://127.0.0.1:3001"
     core_timeout_seconds: float = 10.0
     core_use_system_proxy: bool = False
-    teams: List[str] = field(default_factory=lambda: ["LEGAL", "CYBER1", "CYBER2"])
+    # No longer used: teams come from the Core API (/teams LIST). Kept so old settings files load.
+    teams: List[str] = field(default_factory=list)
+    # Development users and the teams each starts in (team membership is seeded from this).
     users: Dict[str, List[str]] = field(default_factory=dict)
     hidden_users: List[str] = field(
         default_factory=list
@@ -32,6 +34,10 @@ class Settings:
     decision_teams: List[str] = field(default_factory=list)
     auth_mode: str = "dev"
     log_requests: bool = True
+    # Where team membership is kept: "local" (a JSON file the Web App writes) until the
+    # database stores members, then "core" (the Core API /teams path). See membership.py.
+    membership_source: str = "local"
+    membership_file: Path = WEB_APP_DIR / "data" / "memberships.json"
     webapp_contract: Path = WEB_APP_DIR / "contracts" / "webapp_api.json"
     static_dir: Path = WEB_APP_DIR / "secheck_web" / "static"
 
@@ -47,6 +53,8 @@ class Settings:
         "SECHECK_DECISION_TEAMS": "decision_teams",
         "SECHECK_AUTH_MODE": "auth_mode",
         "SECHECK_LOG_REQUESTS": "log_requests",
+        "SECHECK_MEMBERSHIP_SOURCE": "membership_source",
+        "SECHECK_MEMBERSHIP_FILE": "membership_file",
     }
 
 

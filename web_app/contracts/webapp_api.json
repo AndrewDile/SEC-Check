@@ -746,8 +746,8 @@
     },
     "/teams": {
       "get": {
-        "summary": "Configured teams",
-        "description": "No Core call. Returns Team_type values from Web App configuration.",
+        "summary": "Existing teams",
+        "description": "Teams that exist in the Core API (/teams LIST). Teams are created and removed through /teams (extension routes).",
         "operationId": "listTeams",
         "responses": {
           "200": {

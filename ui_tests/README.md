@@ -5,7 +5,8 @@ real browser (Playwright), pick a user, fill in forms and click buttons, then
 check both what the page shows and what the Core API stored.
 
 They run against the Docker stack and **wipe its database before every test**
-(through the Core API's `/reset`).
+(through the Core API's `/reset`). They also put team memberships back to the
+users' starting teams (the Web App's `/dev/reset-memberships`).
 
 ## Set up once
 
@@ -44,8 +45,8 @@ python -m playwright show-trace ui_tests/artifacts/<test name>.zip
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `WEB_URL` | `http://localhost:8000` | Web App |
-| `CORE_URL` | `http://localhost:3001` | Core API (used to reset the database and check results) |
+| `WEB_URL` | `http://localhost` | Web App (through Caddy) |
+| `CORE_URL` | `http://localhost/system` | Core API (used to reset the database and check results) |
 | `HEADED` | off | `1` shows the browser window |
 | `SLOWMO` | `0` | Milliseconds to pause between browser actions |
 | `BROWSER` | `chromium` | `firefox` or `webkit` also work (install them with `playwright install`) |
@@ -61,6 +62,7 @@ python -m playwright show-trace ui_tests/artifacts/<test name>.zip
 | `test_tickets.py` | Logging a ticket, required details, updating (new version), full log of every version, notifying teams, claiming, audit entries |
 | `test_decisions.py` | Material and immaterial decisions, required rationale, the 8-K view |
 | `test_queue_and_dependencies.py` | Team queue for another user, claiming from the queue, adding, checking and removing dependencies (with confirmation), duplicates, linking an incident to a dependency |
+| `test_teams.py` | The Teams page (list, create, duplicates, add and remove members, confirmation, team in use), new teams on tickets, claims, queues and decisions, and the team routes' error rules |
 | `test_accessibility.py` | The accessibility checklist (WCAG 2.x): text contrast, visible focus on every element, form-field borders, labels, alt text, one heading and a title per page, focus moving to new content, incidents opened by a real link, announcements, reporting an incident with the keyboard only, and a full axe-core scan |
 
 ## Accessibility checks
@@ -84,7 +86,7 @@ Two checklist items still need a person:
 ## Writing more tests
 
 * Subclass `UITestCase` from `ui_base.py`. Each test starts signed in as
-  `alice` (CYBER1) on an empty database; set `user = "bob"` on the class, or
+  `alice` (CYBER1) on an empty database with the starting team memberships; set `user = "bob"` on the class, or
   call `self.sign_in("bob")` mid-test. Users come from
   `web_app/config/settings.json`.
 * Find elements with `self.tid("<data-testid>")`. The attributes are in
@@ -93,5 +95,5 @@ Two checklist items still need a person:
 * Helpers: `report_incident(...)`, `log_ticket(...)`, `ticket_item(number)`,
   `expect_notice(text, kind="ok"|"error")`, and `self.core` for Core API reads
   (`incident`, `ticket`, `log`, `incidents`, `dependency_exists`).
-* `python -m playwright codegen http://localhost:8000/app/` opens a browser and
+* `python -m playwright codegen http://localhost/app/` opens a browser and
   writes code as you click, which is a quick way to draft a new test.

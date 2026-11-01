@@ -1,8 +1,8 @@
 """The team queue and the dependency registry."""
+
 import unittest
 
 from playwright.sync_api import expect
-
 from ui_base import UITestCase
 
 
@@ -32,7 +32,7 @@ class TeamQueue(UITestCase):
     def test_claim_from_the_queue(self):
         self.row().get_by_test_id("queue-claim-button").click()
         self.expect_notice("Claimed %s for CYBER2" % self.number)
-        expect(self.row()).to_have_count(0)                 # no longer unclaimed
+        expect(self.row()).to_have_count(0)  # no longer unclaimed
         self.tid("queue-claim").select_option("CLAIMED")
         self.tid("queue-submit").click()
         expect(self.row()).to_contain_text("Claimed by CYBER2")
@@ -85,7 +85,7 @@ class Dependencies(UITestCase):
         remove = self.row("okta sso").get_by_test_id("dependency-remove")
         remove.click()
         expect(remove).to_have_text("Confirm remove")
-        self.assertTrue(self.core.dependency_exists("okta sso"))   # not removed yet
+        self.assertTrue(self.core.dependency_exists("okta sso"))  # not removed yet
         remove.click()
         self.expect_notice("Removed okta sso")
         expect(self.row("okta sso")).to_have_count(0)
