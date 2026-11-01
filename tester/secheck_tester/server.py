@@ -1,9 +1,10 @@
 """HTTP interface of the tester (openapi/tester.yaml):
 
-  POST /test/setup   {"target_url"}   -> 201 {"session_id"}
-  POST /test/run     {"session_id"}   -> 200 report | 500 partial run
-  GET  /test/report?session_id=...    -> 200 report | 409 not finished
+POST /test/setup   {"target_url"}   -> 201 {"session_id"}
+POST /test/run     {"session_id"}   -> 200 report | 500 partial run
+GET  /test/report?session_id=...    -> 200 report | 409 not finished
 """
+
 from __future__ import annotations
 
 import json
@@ -40,7 +41,7 @@ class TesterApp:
         if base:
             if path != base and not path.startswith(base + "/"):
                 return error(404, "Not found: %s" % path)
-            path = path[len(base):] or "/"
+            path = path[len(base) :] or "/"
         routes = {
             ("POST", "/test/setup"): self.setup,
             ("POST", "/test/run"): self.run,
@@ -70,16 +71,27 @@ class TesterApp:
         session_id = self.sessions.new_id()
         reply = Target(target_url, self.settings, session_id).setup()
         if reply.status is None:
-            return error(500, "Target %s/test/setup didn't respond: %s." % (target_url, reply.error), "communication")
+            return error(
+                500,
+                "Target %s/test/setup didn't respond: %s." % (target_url, reply.error),
+                "communication",
+            )
         body = reply.body if isinstance(reply.body, dict) else {}
         if reply.status != 201:
-            message = body.get("message") if isinstance(body.get("message"), str) and body.get("message") else \
-                "Target /test/setup answered %s." % reply.status
+            message = (
+                body.get("message")
+                if isinstance(body.get("message"), str) and body.get("message")
+                else "Target /test/setup answered %s." % reply.status
+            )
             source = body.get("source") if body.get("source") in SOURCES else "unknown"
             return reply.status, {"message": message, "source": source}
         if body.get("session_id") != session_id:
-            return error(500, "Target /test/setup answered 201 with session_id %r, expected %r."
-                         % (body.get("session_id"), session_id), "system")
+            return error(
+                500,
+                "Target /test/setup answered 201 with session_id %r, expected %r."
+                % (body.get("session_id"), session_id),
+                "system",
+            )
         self.sessions.add(Session(session_id, target_url))
         log.info("session %s ready for %s", session_id, target_url)
         return 201, {"session_id": session_id}
@@ -97,7 +109,9 @@ class TesterApp:
             report, abort_message = run_suite(session_id, session.target_url, self.settings)
         except Exception as exc:  # noqa: BLE001
             log.exception("run %s crashed", session_id)
-            report = crashed_report(session_id, session.target_url, "%s: %s" % (type(exc).__name__, exc))
+            report = crashed_report(
+                session_id, session.target_url, "%s: %s" % (type(exc).__name__, exc)
+            )
             self.sessions.finish(session_id, report)
             return error(500, "The tester failed while running the suite: %s" % exc)
         self.sessions.finish(session_id, report)
@@ -123,12 +137,20 @@ def crashed_report(session_id: str, target_url: str, reason: str) -> Dict[str, A
     """A valid report for a run the tester itself couldn't finish."""
     from .coverage import measure
     from .suite import SUITE
+
     unknown = measure(None, None, "Not measured: the tester failed (%s)." % reason)
     return {
         "session_id": session_id,
         "target_url": target_url,
-        "results": [{"test_id": t.test_id, "outcome": "error", "message": "Tester failed: " + reason, "source": "tester"}
-                    for t in SUITE],
+        "results": [
+            {
+                "test_id": t.test_id,
+                "outcome": "error",
+                "message": "Tester failed: " + reason,
+                "source": "tester",
+            }
+            for t in SUITE
+        ],
         "coverage": {"code": unknown, "component": unknown, "system": unknown},
     }
 

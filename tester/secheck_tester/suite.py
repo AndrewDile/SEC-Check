@@ -9,19 +9,31 @@ ctx.call(...) and checks them with the judge helpers; finishing without an
 exception is a pass. Field names come from spec_docs/API Spec.txt; paths are
 in target.py.
 """
+
 from __future__ import annotations
 
 import secrets
 import uuid
-from dataclasses import dataclass, field as dc_field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from .judge import (ERROR_TYPES, Fail, answered, expect_equal, expect_error, expect_field, expect_id,
-                    expect_ok, field, parse_ticket, same_id, ticket_list)
+from .judge import (
+    ERROR_TYPES,
+    Fail,
+    answered,
+    expect_equal,
+    expect_error,
+    expect_field,
+    expect_id,
+    expect_ok,
+    field,
+    parse_ticket,
+    ticket_list,
+)
 from .target import Reply, Target
 
-CLOCK_LAG = timedelta(seconds=60)   # timestamps run 60 s behind the tester's clock
+CLOCK_LAG = timedelta(seconds=60)  # timestamps run 60 s behind the tester's clock
 
 
 @dataclass
@@ -31,16 +43,19 @@ class TestCase:
     criteria: Tuple[str, ...]
     after: Tuple[str, ...]
     fn: Callable[["Context"], Optional[str]]
-    db: bool = False     # a read-after-write check (counts toward Database coverage)
+    db: bool = False  # a read-after-write check (counts toward Database coverage)
 
 
 SUITE: List[TestCase] = []
 
 
-def test(test_id: str, title: str, ac: Tuple[str, ...], after: Tuple[str, ...] = (), db: bool = False):
+def test(
+    test_id: str, title: str, ac: Tuple[str, ...], after: Tuple[str, ...] = (), db: bool = False
+):
     def register(fn):
         SUITE.append(TestCase(test_id, title, tuple(ac), tuple(after), fn, db))
         return fn
+
     return register
 
 
@@ -53,9 +68,9 @@ class Context:
         self.id_style = id_style
         self.ids: Dict[str, str] = {}
         self.state: Dict[str, Any] = {}
-        self.results: Dict[str, str] = {}      # test_id -> outcome
+        self.results: Dict[str, str] = {}  # test_id -> outcome
         self.answered_paths: Set[str] = set()  # Core API paths that got any response
-        self.responded = False                 # the current test got at least one response
+        self.responded = False  # the current test got at least one response
         self._last_ts: Optional[datetime] = None
 
     # -- helpers used by tests
@@ -72,7 +87,7 @@ class Context:
             if self.id_style == "uuid":
                 self.ids[key] = str(uuid.uuid4())
             else:
-                self.ids[key] = str(10 ** 11 + secrets.randbelow(9 * 10 ** 11))   # 12 digits
+                self.ids[key] = str(10**11 + secrets.randbelow(9 * 10**11))  # 12 digits
         return self.ids[key]
 
     def dep(self, key: str, spaced: bool = False) -> str:
@@ -99,8 +114,14 @@ class Context:
         return self.results.get(test_id) == "pass"
 
     # -- request builders (Core field names)
-    def incident(self, method: str, incident_id: str, description: Optional[str] = "", **extra) -> Reply:
-        body: Dict[str, Any] = {"Incident_ID": incident_id, "Method": method, "Timestamp": extra.pop("Timestamp", None) or self.ts()}
+    def incident(
+        self, method: str, incident_id: str, description: Optional[str] = "", **extra
+    ) -> Reply:
+        body: Dict[str, Any] = {
+            "Incident_ID": incident_id,
+            "Method": method,
+            "Timestamp": extra.pop("Timestamp", None) or self.ts(),
+        }
         if description is not None:
             body["Description"] = description
         body.update(extra)
@@ -109,8 +130,14 @@ class Context:
     def get_incident(self, incident_id: str) -> Reply:
         return self.incident("GET", incident_id, "")
 
-    def ticket(self, method: str, incident_id: str, description: Optional[str] = None, **extra) -> Reply:
-        body: Dict[str, Any] = {"Incident_ID": incident_id, "Method": method, "Timestamp": extra.pop("Timestamp", None) or self.ts()}
+    def ticket(
+        self, method: str, incident_id: str, description: Optional[str] = None, **extra
+    ) -> Reply:
+        body: Dict[str, Any] = {
+            "Incident_ID": incident_id,
+            "Method": method,
+            "Timestamp": extra.pop("Timestamp", None) or self.ts(),
+        }
         if description is not None:
             body["Description"] = description
         body.update(extra)
@@ -120,7 +147,9 @@ class Context:
         return self.ticket("GET", incident_id, "", Ticket_number=number)
 
     def notifier(self, method: str, teams: List[str], number: str) -> Reply:
-        return self.call("notifier", {"Team_Names": teams, "Method": method, "Ticket_Number": number})
+        return self.call(
+            "notifier", {"Team_Names": teams, "Method": method, "Ticket_Number": number}
+        )
 
     def logs(self, incident_id: str, timestamp: Optional[str] = None) -> Reply:
         return self.call("logs", {"Incident_ID": incident_id, "Timestamp": timestamp or self.ts()})
@@ -156,7 +185,12 @@ def new_ticket_number(ctx: Context, body: Dict[str, Any], incident_id: str) -> s
 @test("T-01", "Create a material incident (NEW)", ("AC-01",))
 def t01(ctx: Context):
     a = ctx.iid("A")
-    body = expect_ok(ctx.incident("NEW", a, MATERIAL_DESC, Materiality="MATERIAL", Severity="HIGH", Urgency="URGENT"), "Created")
+    body = expect_ok(
+        ctx.incident(
+            "NEW", a, MATERIAL_DESC, Materiality="MATERIAL", Severity="HIGH", Urgency="URGENT"
+        ),
+        "Created",
+    )
     expect_id(body, "Incident_ID", a)
     for name, want in (("Materiality", "MATERIAL"), ("Severity", "HIGH"), ("Urgency", "URGENT")):
         expect_field(body, name, want, required=False)
@@ -186,7 +220,10 @@ def t04(ctx: Context):
 
 @test("T-05", "Reject an incident timestamp in the future", ("AC-01",))
 def t05(ctx: Context):
-    expect_error(ctx.incident("NEW", ctx.iid("future"), "Tester: future", Timestamp=ctx.future_ts()), "INVALID_DATA")
+    expect_error(
+        ctx.incident("NEW", ctx.iid("future"), "Tester: future", Timestamp=ctx.future_ts()),
+        "INVALID_DATA",
+    )
     return "Future timestamp rejected."
 
 
@@ -198,7 +235,10 @@ def t06(ctx: Context):
 
 @test("T-07", "Reject an invalid Severity value", ("AC-01",))
 def t07(ctx: Context):
-    expect_error(ctx.incident("NEW", ctx.iid("badsev"), "Tester: bad severity", Severity="EXTREME"), "INVALID_DATA")
+    expect_error(
+        ctx.incident("NEW", ctx.iid("badsev"), "Tester: bad severity", Severity="EXTREME"),
+        "INVALID_DATA",
+    )
     return "Severity EXTREME rejected."
 
 
@@ -231,7 +271,10 @@ def t11(ctx: Context):
 
 @test("T-12", "Mark an incident immaterial with low severity (EDIT)", ("AC-03",), after=("T-10",))
 def t12(ctx: Context):
-    body = expect_ok(ctx.incident("EDIT", ctx.iid("B"), PLAIN_DESC, Materiality="IMMATERIAL", Severity="LOW"), "Edited")
+    body = expect_ok(
+        ctx.incident("EDIT", ctx.iid("B"), PLAIN_DESC, Materiality="IMMATERIAL", Severity="LOW"),
+        "Edited",
+    )
     expect_id(body, "Incident_ID", ctx.iid("B"))
     return "EDIT accepted."
 
@@ -246,7 +289,10 @@ def t13(ctx: Context):
 
 @test("T-14", "Reject EDIT of an unknown incident", ("AC-03",))
 def t14(ctx: Context):
-    expect_error(ctx.incident("EDIT", ctx.iid("unknown"), "Tester: edit", Materiality="IMMATERIAL"), "UUID_DNE")
+    expect_error(
+        ctx.incident("EDIT", ctx.iid("unknown"), "Tester: edit", Materiality="IMMATERIAL"),
+        "UUID_DNE",
+    )
     return "EDIT of unknown incident rejected with UUID_DNE."
 
 
@@ -254,14 +300,29 @@ def t14(ctx: Context):
 @test("T-15", "Log a ticket on the material incident (NEW)", ("AC-02", "AC-03"), after=("T-01",))
 def t15(ctx: Context):
     a = ctx.iid("A")
-    body = expect_ok(ctx.ticket("NEW", a, TICKET1_DESC, Ticket_severity="HIGH", Ticket_urgency="URGENT",
-                                Team_list=["CYBER1"]), "Logged")
+    body = expect_ok(
+        ctx.ticket(
+            "NEW",
+            a,
+            TICKET1_DESC,
+            Ticket_severity="HIGH",
+            Ticket_urgency="URGENT",
+            Team_list=["CYBER1"],
+        ),
+        "Logged",
+    )
     expect_id(body, "Incident_ID", a)
     ctx.state["ticket1"] = new_ticket_number(ctx, body, a)
     return "Logged ticket %s." % ctx.state["ticket1"]
 
 
-@test("T-16", "Display the logged ticket (GET by weak ticket number)", ("AC-02",), after=("T-15",), db=True)
+@test(
+    "T-16",
+    "Display the logged ticket (GET by weak ticket number)",
+    ("AC-02",),
+    after=("T-15",),
+    db=True,
+)
 def t16(ctx: Context):
     a, t1 = ctx.iid("A"), ctx.state["ticket1"]
     body = expect_ok(ctx.get_ticket(a, t1), "Displayed")
@@ -289,7 +350,9 @@ def t17(ctx: Context):
 @test("T-18", "Editing a ticket creates a new version (EDIT)", ("AC-02",), after=("T-15",))
 def t18(ctx: Context):
     a, t1 = ctx.iid("A"), ctx.state["ticket1"]
-    body = expect_ok(ctx.ticket("EDIT", a, TICKET1_EDIT, Ticket_number=t1))   # no EDIT Status in the spec (G-4)
+    body = expect_ok(
+        ctx.ticket("EDIT", a, TICKET1_EDIT, Ticket_number=t1)
+    )  # no EDIT Status in the spec (G-4)
     number, version = parse_ticket(field(body, "Ticket_ID"), a)
     expect_equal("Edited ticket number", "%s_%d" % (a, number), t1)
     if version is not None and version < 2:
@@ -311,22 +374,38 @@ def t20(ctx: Context):
 
 @test("T-21", "Reject a ticket timestamp in the future", ("AC-02",), after=("T-01",))
 def t21(ctx: Context):
-    expect_error(ctx.ticket("NEW", ctx.iid("A"), "Tester: future ticket", Timestamp=ctx.future_ts()), "INVALID_DATA")
+    expect_error(
+        ctx.ticket("NEW", ctx.iid("A"), "Tester: future ticket", Timestamp=ctx.future_ts()),
+        "INVALID_DATA",
+    )
     return "Future ticket timestamp rejected."
 
 
 @test("T-22", "Reject an invalid Ticket_urgency value", ("AC-02",), after=("T-01",))
 def t22(ctx: Context):
-    expect_error(ctx.ticket("NEW", ctx.iid("A"), "Tester: bad urgency", Ticket_urgency="SOON"), "INVALID_DATA")
+    expect_error(
+        ctx.ticket("NEW", ctx.iid("A"), "Tester: bad urgency", Ticket_urgency="SOON"),
+        "INVALID_DATA",
+    )
     return "Ticket_urgency SOON rejected."
 
 
 # ====================================================================== logs (AC-02, AC-06)
-def log_entries(ctx: Context, body: Dict[str, Any], incident_id: str) -> List[Tuple[int, Optional[int]]]:
-    return [parse_ticket(entry, incident_id) for entry in ticket_list(field(body, "Ticket_ID_List"))]
+def log_entries(
+    ctx: Context, body: Dict[str, Any], incident_id: str
+) -> List[Tuple[int, Optional[int]]]:
+    return [
+        parse_ticket(entry, incident_id) for entry in ticket_list(field(body, "Ticket_ID_List"))
+    ]
 
 
-@test("T-23", "Retrieve the incident log with all its tickets", ("AC-02", "AC-06"), after=("T-15", "T-17"), db=True)
+@test(
+    "T-23",
+    "Retrieve the incident log with all its tickets",
+    ("AC-02", "AC-06"),
+    after=("T-15", "T-17"),
+    db=True,
+)
 def t23(ctx: Context):
     a = ctx.iid("A")
     body = expect_ok(ctx.logs(a), "Log Retrieved")
@@ -336,7 +415,9 @@ def t23(ctx: Context):
     for key in ("ticket1", "ticket2"):
         n, _ = parse_ticket(ctx.state[key], a)
         if n not in numbers:
-            raise Fail("Ticket_ID_List %r is missing ticket %s." % (body["Ticket_ID_List"], ctx.state[key]))
+            raise Fail(
+                "Ticket_ID_List %r is missing ticket %s." % (body["Ticket_ID_List"], ctx.state[key])
+            )
     ctx.state["log_entries"] = entries
     return "Log lists %d entries including both tickets." % len(entries)
 
@@ -352,14 +433,23 @@ def t24(ctx: Context):
         first.setdefault((n, v if v is not None else 1), pos)
         first.setdefault(n, pos)
     if first[n1] > first[n2]:
-        raise Fail("Ticket %s (logged first) appears after %s in the log." % (ctx.state["ticket1"], ctx.state["ticket2"]))
+        raise Fail(
+            "Ticket %s (logged first) appears after %s in the log."
+            % (ctx.state["ticket1"], ctx.state["ticket2"])
+        )
     # With version IDs and a successful edit: t1 v1, t2 v1, then t1 v2.
     if ctx.passed("T-18") and (n1, 2) in first:
         order = [first.get((n1, 1)), first.get((n2, 1)), first.get((n1, 2))]
         if None in order or not order[0] < order[1] < order[2]:
-            raise Fail("Expected %s_1, %s_1, %s_2 in that order; log has %r."
-                       % (ctx.state["ticket1"], ctx.state["ticket2"], ctx.state["ticket1"],
-                          ["%s_%d%s" % (a, n, "" if v is None else "_%d" % v) for n, v in entries]))
+            raise Fail(
+                "Expected %s_1, %s_1, %s_2 in that order; log has %r."
+                % (
+                    ctx.state["ticket1"],
+                    ctx.state["ticket2"],
+                    ctx.state["ticket1"],
+                    ["%s_%d%s" % (a, n, "" if v is None else "_%d" % v) for n, v in entries],
+                )
+            )
     return "Log entries are in action order."
 
 
@@ -419,7 +509,10 @@ def t31(ctx: Context):
 
 @test("T-32", "Reject a claim on an unknown ticket", ("AC-04",))
 def t32(ctx: Context):
-    expect_error(ctx.notifier("CLAIM", [ctx.teams[0]], ctx.iid("unknown") + "_1"), ("UUID_DNE", "INVALID_DATA"))
+    expect_error(
+        ctx.notifier("CLAIM", [ctx.teams[0]], ctx.iid("unknown") + "_1"),
+        ("UUID_DNE", "INVALID_DATA"),
+    )
     return "Claim on unknown ticket rejected."
 
 
@@ -487,7 +580,9 @@ def t40(ctx: Context):
 # ====================================================================== ported from the Web App suite
 @test("T-41", "A second team cannot claim an already claimed ticket", ("AC-04",), after=("T-28",))
 def t41(ctx: Context):
-    expect_error(ctx.notifier("CLAIM", [ctx.teams[2 % len(ctx.teams)]], ctx.state["ticket1"]), "INVALID_DATA")
+    expect_error(
+        ctx.notifier("CLAIM", [ctx.teams[2 % len(ctx.teams)]], ctx.state["ticket1"]), "INVALID_DATA"
+    )
     return "Second claim by another team rejected."
 
 
@@ -499,7 +594,10 @@ def t42(ctx: Context):
 
 @test("T-43", "Reject a ticket assigned to an unknown team", ("AC-02", "AC-04"), after=("T-01",))
 def t43(ctx: Context):
-    expect_error(ctx.ticket("NEW", ctx.iid("A"), "Tester: unknown team", Team_list=["MARKETING"]), "INVALID_DATA")
+    expect_error(
+        ctx.ticket("NEW", ctx.iid("A"), "Tester: unknown team", Team_list=["MARKETING"]),
+        "INVALID_DATA",
+    )
     return "Team_list with an unknown team rejected."
 
 
@@ -509,7 +607,12 @@ def t44(ctx: Context):
     return "NOTIFY with empty Team_Names rejected."
 
 
-@test("T-45", "Reject a ticket number that belongs to another incident", ("AC-02",), after=("T-15", "T-10"))
+@test(
+    "T-45",
+    "Reject a ticket number that belongs to another incident",
+    ("AC-02",),
+    after=("T-15", "T-10"),
+)
 def t45(ctx: Context):
     expect_error(ctx.get_ticket(ctx.iid("B"), ctx.state["ticket1"]), ("UUID_DNE", "INVALID_DATA"))
     return "Ticket of incident A not shown under incident B."
@@ -523,11 +626,19 @@ def t46(ctx: Context):
 
 @test("T-47", "Reject a ticket EDIT without Description", ("AC-02",), after=("T-15",))
 def t47(ctx: Context):
-    expect_error(ctx.ticket("EDIT", ctx.iid("A"), None, Ticket_number=ctx.state["ticket1"]), "INVALID_DATA")
+    expect_error(
+        ctx.ticket("EDIT", ctx.iid("A"), None, Ticket_number=ctx.state["ticket1"]), "INVALID_DATA"
+    )
     return "EDIT without Description rejected."
 
 
-@test("T-48", "An edited ticket shows the new text and keeps unchanged fields", ("AC-02",), after=("T-18",), db=True)
+@test(
+    "T-48",
+    "An edited ticket shows the new text and keeps unchanged fields",
+    ("AC-02",),
+    after=("T-18",),
+    db=True,
+)
 def t48(ctx: Context):
     body = expect_ok(ctx.get_ticket(ctx.iid("A"), ctx.state["ticket1"]), "Displayed")
     expect_field(body, "Ticket_Description", TICKET1_EDIT)
@@ -535,21 +646,34 @@ def t48(ctx: Context):
     expect_field(body, "ticket_urgency", "URGENT")
     teams = field(body, "Team_List")
     if not isinstance(teams, list) or "CYBER1" not in teams:
-        raise Fail("Team_List is %r after an EDIT that didn't change it; expected it to keep CYBER1." % (teams,))
+        raise Fail(
+            "Team_List is %r after an EDIT that didn't change it; expected it to keep CYBER1."
+            % (teams,)
+        )
     return "Latest version has the edited text and the original severity, urgency and teams."
 
 
-@test("T-49", "The log keeps every version of an edited ticket, in order", ("AC-02", "AC-06"), after=("T-18", "T-23"), db=True)
+@test(
+    "T-49",
+    "The log keeps every version of an edited ticket, in order",
+    ("AC-02", "AC-06"),
+    after=("T-18", "T-23"),
+    db=True,
+)
 def t49(ctx: Context):
     a = ctx.iid("A")
     body = expect_ok(ctx.logs(a), "Log Retrieved")
     n1, _ = parse_ticket(ctx.state["ticket1"], a)
     versions = [v for n, v in log_entries(ctx, body, a) if n == n1]
     if len(versions) < 2:
-        raise Fail("Ticket %s was edited but appears %d time(s) in Ticket_ID_List %r; the old version should stay in the log."
-                   % (ctx.state["ticket1"], len(versions), body["Ticket_ID_List"]))
+        raise Fail(
+            "Ticket %s was edited but appears %d time(s) in Ticket_ID_List %r; the old version should stay in the log."
+            % (ctx.state["ticket1"], len(versions), body["Ticket_ID_List"])
+        )
     if all(v is not None for v in versions) and versions != sorted(versions):
-        raise Fail("Versions of %s are out of order in the log: %r." % (ctx.state["ticket1"], versions))
+        raise Fail(
+            "Versions of %s are out of order in the log: %r." % (ctx.state["ticket1"], versions)
+        )
     return "Log lists %d versions of %s in order." % (len(versions), ctx.state["ticket1"])
 
 
@@ -578,11 +702,22 @@ def t51(ctx: Context):
     return "Log response has the incident's description and markings."
 
 
-@test("T-52", "An incident's description and urgency can be edited", ("AC-01",), after=("T-13",), db=True)
+@test(
+    "T-52",
+    "An incident's description and urgency can be edited",
+    ("AC-01",),
+    after=("T-13",),
+    db=True,
+)
 def t52(ctx: Context):
     b = ctx.iid("B")
     new_desc = PLAIN_DESC + " Update: one mailbox was accessed."
-    expect_ok(ctx.incident("EDIT", b, new_desc, Materiality="IMMATERIAL", Severity="LOW", Urgency="URGENT"), "Edited")
+    expect_ok(
+        ctx.incident(
+            "EDIT", b, new_desc, Materiality="IMMATERIAL", Severity="LOW", Urgency="URGENT"
+        ),
+        "Edited",
+    )
     body = expect_ok(ctx.get_incident(b), "Data Fetched")
     expect_field(body, "Description", new_desc)
     incident_matches(body, "IMMATERIAL", "LOW", "URGENT")
@@ -601,7 +736,10 @@ def t53(ctx: Context):
 @test("T-54", "Error responses use the {Error, Message} format", ("AC-01", "AC-02", "AC-05"))
 def t54(ctx: Context):
     checks = [
-        ("incidents", ctx.incident("NEW", ctx.iid("envelope"), "Tester: envelope", Urgency="WHENEVER")),
+        (
+            "incidents",
+            ctx.incident("NEW", ctx.iid("envelope"), "Tester: envelope", Urgency="WHENEVER"),
+        ),
         ("tickets", ctx.ticket("NEW", ctx.iid("unknown"), "Tester: envelope")),
         ("dependencies", ctx.dependency("REMOVE", ctx.dep("envelope-missing"))),
     ]
@@ -611,7 +749,10 @@ def t54(ctx: Context):
         if reply.status != 400 or not isinstance(body, dict):
             raise Fail("/%s: expected a 400 error object, got %s %r." % (path, reply.status, body))
         if body.get("Error") not in ERROR_TYPES:
-            raise Fail("/%s: Error is %r, expected one of %s." % (path, body.get("Error"), ", ".join(sorted(ERROR_TYPES))))
+            raise Fail(
+                "/%s: Error is %r, expected one of %s."
+                % (path, body.get("Error"), ", ".join(sorted(ERROR_TYPES)))
+            )
         if not isinstance(body.get("Message"), str) or not body["Message"].strip():
             raise Fail("/%s: error has no Message text: %r." % (path, body))
     return "All three errors have Error from Error_type and a Message."
@@ -621,4 +762,6 @@ ALL_IDS = [t.test_id for t in SUITE]
 assert len(ALL_IDS) == len(set(ALL_IDS)), "duplicate test IDs"
 for _t in SUITE:
     for _dep in _t.after:
-        assert ALL_IDS.index(_dep) < ALL_IDS.index(_t.test_id), "%s runs before its prerequisite %s" % (_t.test_id, _dep)
+        assert ALL_IDS.index(_dep) < ALL_IDS.index(_t.test_id), (
+            "%s runs before its prerequisite %s" % (_t.test_id, _dep)
+        )

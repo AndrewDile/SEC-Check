@@ -7,6 +7,7 @@ startup and by the tests, so spec changes cannot silently go unhandled.
 
 Handler signature:  fn(ctx: Context, req: Request) -> dict | (status, dict)
 """
+
 from __future__ import annotations
 
 import random
@@ -28,14 +29,19 @@ def operation(operation_id: str) -> Callable:
             raise RuntimeError(f"Duplicate handler for operationId {operation_id}")
         OPERATIONS[operation_id] = fn
         return fn
+
     return register
 
 
 def extension(method: str, path: str, *, auth: bool = True, note: str = "") -> Callable:
     """Register a route the Web App spec does not define yet (documented in README)."""
+
     def register(fn: Callable) -> Callable:
-        EXTENSIONS.append({"method": method, "path": path, "handler": fn, "auth": auth, "note": note})
+        EXTENSIONS.append(
+            {"method": method, "path": path, "handler": fn, "auth": auth, "note": note}
+        )
         return fn
+
     return register
 
 
@@ -70,15 +76,17 @@ class Context:
 
 
 # ---------------------------------------------------------------- shared checks
-def require_known_teams(ctx: Context, teams: List[str], field_name: str) -> None:
-    unknown = [t for t in teams if t not in ctx.settings.teams]
+def require_known_teams(ctx: Context, names: List[str], field_name: str) -> None:
+    unknown = [t for t in names if t not in ctx.settings.teams]
     if unknown:
         raise invalid(f"{field_name} contains unknown team: {', '.join(unknown)}.")
 
 
 def require_ticket_of_incident(incident_id: str, ticket_number: str) -> None:
     if not ticket_number.startswith(f"{incident_id}_"):
-        raise invalid(f"Ticket_number {ticket_number} does not belong to Incident_ID {incident_id}.")
+        raise invalid(
+            f"Ticket_number {ticket_number} does not belong to Incident_ID {incident_id}."
+        )
 
 
 def can_decide(ctx: Context, user: User) -> bool:
@@ -88,8 +96,11 @@ def can_decide(ctx: Context, user: User) -> bool:
 
 def require_can_decide(ctx: Context, user: User) -> None:
     if not can_decide(ctx, user):
-        raise WebAppError("FORBIDDEN", f"Only members of {', '.join(ctx.settings.decision_teams)} can record decisions.")
+        raise WebAppError(
+            "FORBIDDEN",
+            f"Only members of {', '.join(ctx.settings.decision_teams)} can record decisions.",
+        )
 
 
 # Import modules so their handlers register themselves.
-from . import incidents, tickets, dependencies, teams  # noqa: E402,F401
+from . import dependencies, incidents, teams, tickets  # noqa: E402,F401

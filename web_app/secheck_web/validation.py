@@ -9,6 +9,7 @@ Because rules come from the contract, changing a constraint in the spec (an
 enum value, a max length, a required field) changes validation without code
 changes. Regenerate contracts with tools/sync_contracts.py.
 """
+
 from __future__ import annotations
 
 import json

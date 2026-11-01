@@ -3,6 +3,7 @@
 No third-party packages are needed, so the app runs anywhere Python 3.9+ is
 installed. Both the Web App and the mock Core API use this module.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,9 @@ from urllib.parse import unquote
 Response = Tuple[int, Dict[str, str], bytes]
 
 
-def json_response(status: int, payload: Any, extra_headers: Optional[Dict[str, str]] = None) -> Response:
+def json_response(
+    status: int, payload: Any, extra_headers: Optional[Dict[str, str]] = None
+) -> Response:
     body = json.dumps(payload, indent=2).encode("utf-8")
     headers = {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
     headers.update(extra_headers or {})
@@ -54,7 +57,7 @@ class Route:
         pattern, names = "^", []
         pos = 0
         for m in re.finditer(r"{([^}/]+)}", template):
-            pattern += re.escape(template[pos:m.start()]) + "([^/]+)"
+            pattern += re.escape(template[pos : m.start()]) + "([^/]+)"
             names.append(m.group(1))
             pos = m.end()
         pattern += re.escape(template[pos:]) + "/?$"
@@ -97,7 +100,9 @@ def make_server(app: Any, host: str, port: int, name: str = "server") -> Threadi
             try:
                 status, headers, payload = app.handle(self.command, self.path, self.headers, body)
             except Exception as exc:  # last-resort guard; app.handle should not raise
-                status, headers, payload = json_response(500, {"Error": "INTERNAL_ERROR", "Message": str(exc)})
+                status, headers, payload = json_response(
+                    500, {"Error": "INTERNAL_ERROR", "Message": str(exc)}
+                )
             self.send_response(status)
             for key, value in headers.items():
                 self.send_header(key, value)

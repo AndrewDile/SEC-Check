@@ -7,6 +7,7 @@ Test functions use the expect_* helpers. They raise:
   BudgetExceeded  the run time limit cut the test short            -> error, source tester
 Any other exception means the test function itself is broken      -> error, source tester
 """
+
 from __future__ import annotations
 
 import re
@@ -36,9 +37,9 @@ class BudgetExceeded(Exception):
 
 @dataclass
 class Outcome:
-    outcome: str            # pass | fail | error | skip
+    outcome: str  # pass | fail | error | skip
     message: str
-    source: Optional[str] = None   # only for error
+    source: Optional[str] = None  # only for error
 
     def as_dict(self, test_id: str) -> Dict[str, Any]:
         out = {"test_id": test_id, "outcome": self.outcome, "message": self.message or self.outcome}
@@ -83,8 +84,9 @@ def answered(reply: Reply) -> Reply:
     return reply
 
 
-def expect_ok(reply: Reply, status: Optional[Union[str, Sequence[str]]] = None,
-              status_key: str = "Status") -> Dict[str, Any]:
+def expect_ok(
+    reply: Reply, status: Optional[Union[str, Sequence[str]]] = None, status_key: str = "Status"
+) -> Dict[str, Any]:
     """Expect 200 with a JSON object; check the Status string when given."""
     answered(reply)
     if reply.status != 200:
@@ -95,7 +97,10 @@ def expect_ok(reply: Reply, status: Optional[Union[str, Sequence[str]]] = None,
         allowed = [status] if isinstance(status, str) else list(status)
         got = reply.body.get(status_key)
         if got not in allowed:
-            raise Fail("%s: %s is %r, expected %s." % (reply.path, status_key, got, " or ".join(repr(a) for a in allowed)))
+            raise Fail(
+                "%s: %s is %r, expected %s."
+                % (reply.path, status_key, got, " or ".join(repr(a) for a in allowed))
+            )
     return reply.body
 
 
@@ -105,7 +110,10 @@ def expect_error(reply: Reply, errors: Union[str, Iterable[str]]) -> Dict[str, A
     answered(reply)
     names = " or ".join(sorted(allowed))
     if reply.status == 200:
-        raise Fail("%s: accepted a request that should be rejected with %s (got %s)." % (reply.path, names, describe(reply)))
+        raise Fail(
+            "%s: accepted a request that should be rejected with %s (got %s)."
+            % (reply.path, names, describe(reply))
+        )
     if reply.status != 400:
         raise Fail("%s: expected 400 %s, got %s." % (reply.path, names, describe(reply)))
     body = reply.body if isinstance(reply.body, dict) else {}
@@ -164,7 +172,7 @@ def parse_ticket(value: Any, incident_id: str) -> Tuple[int, Optional[int]]:
     prefix = str(incident_id) + "_"
     if not text.startswith(prefix):
         raise Fail("Ticket ID %r does not belong to incident %s." % (value, incident_id))
-    parts = text[len(prefix):].split("_")
+    parts = text[len(prefix) :].split("_")
     if not 1 <= len(parts) <= 2 or not all(p.isdigit() for p in parts):
         raise Fail("Ticket ID %r is not <Incident_ID>_<number>[_<version>]." % (value,))
     return int(parts[0]), (int(parts[1]) if len(parts) == 2 else None)

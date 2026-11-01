@@ -1,0 +1,56 @@
+# Developer docs, served at /docs/ by the docs container. Preview locally with ./docs.sh.
+site_name: SEC-Check developer docs
+site_description: How SEC-Check is built, for the people who work on it
+docs_dir: pages
+repo_url: https://github.com/AndrewDile/SEC-Check
+edit_uri: edit/main/docs/pages/
+
+theme:
+  name: material
+  custom_dir: overrides   # the "developer docs" banner on every page
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/brightness-7, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/brightness-4, name: Light mode }
+
+hooks:
+  - hooks.py
+
+plugins:
+  - search
+  - swagger-ui-tag
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Overview: index.md
+  - Getting started: getting-started.md
+  - Architecture: architecture.md
+  - Data model: data-model.md
+  - Services:
+      - Core API: services/core-api.md
+      - Web app: services/web-app.md
+      - Ingestion worker: services/ingestion-worker.md
+      - Notification service: services/notification-service.md
+      - Tester: services/tester.md
+  - Testing: testing.md
+  - Deployment and operations: operations.md
+  - Known limitations: limitations.md

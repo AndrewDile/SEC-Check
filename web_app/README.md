@@ -45,7 +45,6 @@ Useful URLs:
 | URL | What |
 |---|---|
 | `/app/` | The web app |
-| `/docs` | Interactive API docs (Swagger UI; needs internet to load) |
 | `/openapi.json` | The Web App contract the server is running |
 | `/webapp/v1/health` | Is the server up, and can it reach the Core API? (A Core API that answers with an error, even `NOT_IMPLEMENTED`, counts as reachable.) |
 

@@ -1,4 +1,5 @@
 """Session store. Sessions and their reports live in memory until the process stops."""
+
 from __future__ import annotations
 
 import threading

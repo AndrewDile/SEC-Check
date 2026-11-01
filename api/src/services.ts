@@ -2,9 +2,9 @@
 // Core API makes to them. Contracts: ingestion_worker/ and notification_service/ *.openapi.yaml.
 import { randomInt, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { Database, DbError } from './db/api.js';
+import { type Database, DbError } from './db/api.js';
 
-const COMPANY_ID = 'default';  // one company per deployment
+const COMPANY_ID = 'default'; // one company per deployment
 const WORKER_URL = process.env.WORKER_URL;
 const NOTIFIER_URL = process.env.NOTIFIER_URL;
 const WEB_APP_URL = process.env.WEB_APP_URL ?? 'http://localhost:8000';
@@ -38,13 +38,15 @@ function send(key: string, what: string, url: string, init: RequestInit) {
         throw new Error(`HTTP ${res.status}`);
       } catch (e) {
         if (attempt === 5) return console.error(`${what} failed: ${e}`);
-        await new Promise(r => setTimeout(r, 1000 * 2 ** attempt));
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
       }
     }
   };
   const next = (queues.get(key) ?? Promise.resolve()).then(job);
   queues.set(key, next);
-  void next.then(() => { if (queues.get(key) === next) queues.delete(key); });
+  void next.then(() => {
+    if (queues.get(key) === next) queues.delete(key);
+  });
 }
 
 export const worker = {
@@ -67,7 +69,12 @@ export const worker = {
 
 async function notify(db: Database, incident: { id: string }) {
   if (!NOTIFIER_URL) return;
-  const recipients = (await db.listTeams()).map(t => ({ recipient_id: `${t.name}:log`, team_name: t.name, channel: 'log', address: t.name }));
+  const recipients = (await db.listTeams()).map((t) => ({
+    recipient_id: `${t.name}:log`,
+    team_name: t.name,
+    channel: 'log',
+    address: t.name,
+  }));
   send(`notif:${incident.id}`, `Notification ${incident.id}`, `${NOTIFIER_URL}/notifications`, {
     method: 'POST',
     headers: { authorization: `Bearer ${process.env.NOTIF_INBOUND_TOKEN}`, 'content-type': 'application/json' },
@@ -78,7 +85,7 @@ async function notify(db: Database, incident: { id: string }) {
       recipients,
     }),
   });
-  await db.logEvent(incident.id, 'NOTIFICATION_SENT', { recipients: recipients.map(r => r.recipient_id) });
+  await db.logEvent(incident.id, 'NOTIFICATION_SENT', { recipients: recipients.map((r) => r.recipient_id) });
 }
 
 export function servicesRouter(db: Database) {
@@ -99,7 +106,7 @@ export function servicesRouter(db: Database) {
     if (existing) return res.status(200).json(existing.ingest);
 
     for (let attempt = 1; ; attempt++) {
-      const id = String(randomInt(1e11, 1e12));  // 12-digit Incident_ID, like the web app's
+      const id = String(randomInt(1e11, 1e12)); // 12-digit Incident_ID, like the web app's
       const stored = { ...body, id, created_at: new Date().toISOString() };
       try {
         await db.createIncident({
@@ -122,15 +129,19 @@ export function servicesRouter(db: Database) {
 
   // Notification service
 
-  router.post<{ id: string }>('/notif/notifications/:id/results', requireToken(process.env.NOTIF_CORE_API_TOKEN), async (req, res) => {
-    const incident = await db.getIncident(req.params.id).catch(e => {
-      if (e instanceof DbError && e.type === 'UUID_DNE') return undefined;
-      throw e;
-    });
-    if (!incident?.source) return res.status(404).end();
-    await db.logEvent(incident.incidentId, 'NOTIFICATION_RESULTS', req.body);
-    res.status(200).end();
-  });
+  router.post<{ id: string }>(
+    '/notif/notifications/:id/results',
+    requireToken(process.env.NOTIF_CORE_API_TOKEN),
+    async (req, res) => {
+      const incident = await db.getIncident(req.params.id).catch((e) => {
+        if (e instanceof DbError && e.type === 'UUID_DNE') return undefined;
+        throw e;
+      });
+      if (!incident?.source) return res.status(404).end();
+      await db.logEvent(incident.incidentId, 'NOTIFICATION_RESULTS', req.body);
+      res.status(200).end();
+    },
+  );
 
   return router;
 }

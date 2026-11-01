@@ -1,5 +1,5 @@
 import express from 'express';
-import { DbError, Incident, Materiality, Severity, Ticket, Urgency } from './db/api.js';
+import { DbError, type Incident, type Materiality, type Severity, type Ticket, type Urgency } from './db/api.js';
 import { MySqlDb } from './db/mysql.js';
 import { servicesRouter, worker } from './services.js';
 import { testError, testingRouter } from './testing.js';
@@ -30,7 +30,7 @@ function oneOf<T extends string>(value: unknown, allowed: T[], field: string): T
 
 function timestamp(value: unknown): Date {
   const date = new Date(typeof value === 'string' ? value : NaN);
-  if (isNaN(date.getTime())) invalid('Timestamp must be an RFC 3339 date-time.');
+  if (Number.isNaN(date.getTime())) invalid('Timestamp must be an RFC 3339 date-time.');
   if (date.getTime() > Date.now() + 5000) invalid('Timestamp cannot be set in the future.');
   return date;
 }
@@ -42,7 +42,8 @@ function description(value: unknown): string {
 }
 
 function incidentId(value: unknown): string {
-  if (typeof value !== 'string' || !value || value.includes('_') || value.length > 64) invalid('Incident_ID is invalid.');
+  if (typeof value !== 'string' || !value || value.includes('_') || value.length > 64)
+    invalid('Incident_ID is invalid.');
   return value;
 }
 
@@ -51,14 +52,20 @@ function ticketRef(value: unknown, incident?: string) {
   const parts = String(value ?? '').split('_');
   if (parts.length === 1 && incident) parts.unshift(incident);
   const [id, number, version] = parts;
-  if (parts.length > 3 || !/^\d+$/.test(number ?? '') || (version !== undefined && !/^\d+$/.test(version))) invalid('Ticket_number is invalid.');
+  if (parts.length > 3 || !/^\d+$/.test(number ?? '') || (version !== undefined && !/^\d+$/.test(version)))
+    invalid('Ticket_number is invalid.');
   if (incident && id !== incident) invalid('Ticket_number does not belong to Incident_ID.');
-  return { incidentId: incidentId(id), ticketNumber: Number(number), version: version === undefined ? undefined : Number(version) };
+  return {
+    incidentId: incidentId(id),
+    ticketNumber: Number(number),
+    version: version === undefined ? undefined : Number(version),
+  };
 }
 
 function teamList(value: unknown, field: string): string[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || !value.every(t => typeof t === 'string')) invalid(`${field} must be a list of team names.`);
+  if (!Array.isArray(value) || !value.every((t) => typeof t === 'string'))
+    invalid(`${field} must be a list of team names.`);
   return value;
 }
 
@@ -102,7 +109,7 @@ function ticketOut(t: Ticket, i: Incident, status?: string) {
 app.post('/incidents', async (req, res) => {
   const b = req.body ?? {};
   if (b.Method === 'LIST') {
-    return res.json({ Incidents: (await db.listIncidents()).map(i => incidentOut(i)), Status: 'Listed' });
+    return res.json({ Incidents: (await db.listIncidents()).map((i) => incidentOut(i)), Status: 'Listed' });
   }
   const id = incidentId(b.Incident_ID);
   timestamp(b.Timestamp);
@@ -115,13 +122,20 @@ app.post('/incidents', async (req, res) => {
   switch (b.Method) {
     case 'NEW': {
       const incident = await db.createIncident({
-        incidentId: id, description: description(b.Description), dependencyName: dependency || undefined,
-        reportedAt: timestamp(b.Timestamp), ...fields,
+        incidentId: id,
+        description: description(b.Description),
+        dependencyName: dependency || undefined,
+        reportedAt: timestamp(b.Timestamp),
+        ...fields,
       });
       return res.json(incidentOut(incident, 'Created'));
     }
     case 'EDIT': {
-      const incident = await db.editIncident(id, { description: description(b.Description), dependencyName: dependency, ...fields });
+      const incident = await db.editIncident(id, {
+        description: description(b.Description),
+        dependencyName: dependency,
+        ...fields,
+      });
       return res.json(incidentOut(incident, 'Edited'));
     }
     case 'GET':
@@ -136,10 +150,10 @@ app.post('/tickets', async (req, res) => {
   if (b.Method === 'LIST') {
     const claim = oneOf(b.Ticket_Claim, ['CLAIMED', 'UNCLAIMED'], 'Ticket_Claim');
     const tickets = (await db.listTickets())
-      .filter(t => !b.Team || t.teams.includes(b.Team))
-      .filter(t => !claim || (claim === 'CLAIMED') === Boolean(t.claimedBy));
-    const incidents = new Map((await db.listIncidents()).map(i => [i.incidentId, i]));
-    return res.json({ Tickets: tickets.map(t => ticketOut(t, incidents.get(t.incidentId)!)), Status: 'Listed' });
+      .filter((t) => !b.Team || t.teams.includes(b.Team))
+      .filter((t) => !claim || (claim === 'CLAIMED') === Boolean(t.claimedBy));
+    const incidents = new Map((await db.listIncidents()).map((i) => [i.incidentId, i]));
+    return res.json({ Tickets: tickets.map((t) => ticketOut(t, incidents.get(t.incidentId)!)), Status: 'Listed' });
   }
   const id = incidentId(b.Incident_ID);
   const ts = timestamp(b.Timestamp);
@@ -179,8 +193,8 @@ app.post('/notifier', async (req, res) => {
   if (!teams?.length) invalid('Team_Names invalid data type');
   const ref = ticketRef(b.Ticket_Number);
   if (ref.version !== undefined) invalid('Ticket_Number must be a ticket number without a version.');
-  const known = new Set((await db.listTeams()).map(t => t.name));
-  const unknown = teams.filter(t => !known.has(t));
+  const known = new Set((await db.listTeams()).map((t) => t.name));
+  const unknown = teams.filter((t) => !known.has(t));
   if (unknown.length) invalid(`Unknown team: ${unknown.join(', ')}.`);
   let status: string;
   switch (b.Method) {
@@ -265,8 +279,10 @@ app.use(((err, req, res, _next) => {
     console.error(err);
     return testError(res, 500, 'Unexpected error.');
   }
-  if (err instanceof DbError) return res.status(err.type === 'TIMEOUT' ? 504 : 400).json({ Error: err.type, Message: err.message });
-  if (err?.type === 'entity.parse.failed') return res.status(400).json({ Error: 'INVALID_DATA', Message: 'Body is not valid JSON.' });
+  if (err instanceof DbError)
+    return res.status(err.type === 'TIMEOUT' ? 504 : 400).json({ Error: err.type, Message: err.message });
+  if (err?.type === 'entity.parse.failed')
+    return res.status(400).json({ Error: 'INVALID_DATA', Message: 'Body is not valid JSON.' });
   console.error(err);
   res.status(500).json({ Error: 'INTERNAL_ERROR', Message: 'Unexpected error.' });
 }) as express.ErrorRequestHandler);

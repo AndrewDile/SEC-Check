@@ -1,4 +1,5 @@
 """Dependencies (Web App API 4.15)."""
+
 from __future__ import annotations
 
 from typing import Any, Dict

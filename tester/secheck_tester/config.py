@@ -4,12 +4,13 @@ Most of these exist because the pod hasn't settled a detail of the Core API
 yet (see "Where the spec is ambiguous" in README.md). Changing a setting is
 meant to be enough to follow a pod decision, without touching the tests.
 """
+
 from __future__ import annotations
 
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, List
 
 DEFAULT_TEAMS = ["LEGAL", "CYBER1", "CYBER2"]
 
@@ -18,18 +19,20 @@ DEFAULT_TEAMS = ["LEGAL", "CYBER1", "CYBER2"]
 class Settings:
     host: str = "0.0.0.0"
     port: int = 8100
-    base_path: str = ""                 # route prefix, e.g. "/tester"
-    request_timeout: float = 10.0       # one Core API call (seconds)
-    setup_timeout: float = 60.0         # the target's /test/setup
-    run_budget: float = 240.0           # the whole suite; after this the run aborts
-    report_retries: int = 3             # retries while the target's /test/report answers 409
+    base_path: str = ""  # route prefix, e.g. "/tester"
+    request_timeout: float = 10.0  # one Core API call (seconds)
+    setup_timeout: float = 60.0  # the target's /test/setup
+    run_budget: float = 240.0  # the whole suite; after this the run aborts
+    report_retries: int = 3  # retries while the target's /test/report answers 409
     report_retry_delay: float = 1.0
-    max_comm_errors: int = 3            # consecutive no-response tests before the rest are skipped
-    session_header: str = "X-Session-ID"   # "" sends no header
-    session_in_body: bool = False       # also add "session_id" to every Core API body
-    id_style: str = "digits"            # Incident_ID style: "digits" (12-digit string) or "uuid"
+    max_comm_errors: int = 3  # consecutive no-response tests before the rest are skipped
+    session_header: str = "X-Session-ID"  # "" sends no header
+    session_in_body: bool = False  # also add "session_id" to every Core API body
+    id_style: str = "digits"  # Incident_ID style: "digits" (12-digit string) or "uuid"
     dependencies_path: str = "/dependencies"
-    teams: List[str] = field(default_factory=lambda: list(DEFAULT_TEAMS))   # team names the tests use
+    teams: List[str] = field(
+        default_factory=lambda: list(DEFAULT_TEAMS)
+    )  # team names the tests use
 
     ENV = {
         "TESTER_HOST": ("host", str),

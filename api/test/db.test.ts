@@ -10,14 +10,18 @@ const enabled = Boolean(process.env.DB_USER);
 const at = new Date('2026-09-25T20:00:00Z');
 
 async function dbError(p: Promise<unknown>) {
-  const e = await p.then(() => undefined, err => err);
+  const e = await p.then(
+    () => undefined,
+    (err) => err,
+  );
   expect(e).toBeInstanceOf(DbError);
   return (e as DbError).type;
 }
 
 describe.skipIf(!enabled)('MySqlDb', () => {
   const db = MySqlDb.fromEnv();
-  const newIncident = (incidentId = '100', extra = {}) => db.createIncident({ incidentId, description: 'Test incident', reportedAt: at, ...extra });
+  const newIncident = (incidentId = '100', extra = {}) =>
+    db.createIncident({ incidentId, description: 'Test incident', reportedAt: at, ...extra });
 
   beforeEach(() => db.reset());
   afterAll(() => db.close());
@@ -26,8 +30,13 @@ describe.skipIf(!enabled)('MySqlDb', () => {
     it('creates with UNDECIDED defaults and reads back', async () => {
       await newIncident('100', { dependencyName: 'acme' });
       expect(await db.getIncident('100')).toMatchObject({
-        incidentId: '100', description: 'Test incident', dependencyName: 'acme',
-        materiality: 'UNDECIDED', severity: 'UNDECIDED', urgency: 'UNDECIDED', reportedAt: at,
+        incidentId: '100',
+        description: 'Test incident',
+        dependencyName: 'acme',
+        materiality: 'UNDECIDED',
+        severity: 'UNDECIDED',
+        urgency: 'UNDECIDED',
+        reportedAt: at,
       });
     });
 
@@ -47,7 +56,10 @@ describe.skipIf(!enabled)('MySqlDb', () => {
 
     it('finds worker incidents by (source, external_id), which is unique', async () => {
       await newIncident('100', { source: 'cisa_kev', externalId: 'CVE-1', ingest: { id: '100', title: 't' } });
-      expect(await db.findIncidentBySource('cisa_kev', 'CVE-1')).toMatchObject({ incidentId: '100', ingest: { id: '100', title: 't' } });
+      expect(await db.findIncidentBySource('cisa_kev', 'CVE-1')).toMatchObject({
+        incidentId: '100',
+        ingest: { id: '100', title: 't' },
+      });
       expect(await db.findIncidentBySource('cisa_kev', 'CVE-2')).toBeUndefined();
       expect(await dbError(newIncident('101', { source: 'cisa_kev', externalId: 'CVE-1' }))).toBe('UUID_EXISTS');
     });
@@ -55,7 +67,7 @@ describe.skipIf(!enabled)('MySqlDb', () => {
     it('lists incidents', async () => {
       await newIncident('100');
       await newIncident('101');
-      expect((await db.listIncidents()).map(i => i.incidentId)).toEqual(['100', '101']);
+      expect((await db.listIncidents()).map((i) => i.incidentId)).toEqual(['100', '101']);
     });
   });
 
@@ -65,7 +77,13 @@ describe.skipIf(!enabled)('MySqlDb', () => {
     it('numbers tickets per incident and starts at version 1', async () => {
       const t1 = await db.createTicket('100', { description: 'a', teams: ['CYBER1'], reportedAt: at });
       const t2 = await db.createTicket('100', { description: 'b', reportedAt: at });
-      expect(t1).toMatchObject({ ticketId: '100_1_1', ticketNumber: 1, version: 1, teams: ['CYBER1'], severity: 'UNDECIDED' });
+      expect(t1).toMatchObject({
+        ticketId: '100_1_1',
+        ticketNumber: 1,
+        version: 1,
+        teams: ['CYBER1'],
+        severity: 'UNDECIDED',
+      });
       expect(t2.ticketId).toBe('100_2_1');
     });
 
@@ -79,8 +97,10 @@ describe.skipIf(!enabled)('MySqlDb', () => {
     });
 
     it('gives concurrent new tickets distinct numbers', async () => {
-      const tickets = await Promise.all(Array.from({ length: 10 }, () => db.createTicket('100', { description: 'a', reportedAt: at })));
-      expect(tickets.map(t => t.ticketNumber).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      const tickets = await Promise.all(
+        Array.from({ length: 10 }, () => db.createTicket('100', { description: 'a', reportedAt: at })),
+      );
+      expect(tickets.map((t) => t.ticketNumber).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
 
     it('rejects unknown incidents, tickets, versions and teams', async () => {
@@ -88,24 +108,26 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       expect(await dbError(db.createTicket('999', { description: 'a', reportedAt: at }))).toBe('UUID_DNE');
       expect(await dbError(db.getTicket('100', 9))).toBe('UUID_DNE');
       expect(await dbError(db.getTicket('100', 1, 9))).toBe('UUID_DNE');
-      expect(await dbError(db.createTicket('100', { description: 'a', teams: ['NOPE'], reportedAt: at }))).toBe('INVALID_DATA');
+      expect(await dbError(db.createTicket('100', { description: 'a', teams: ['NOPE'], reportedAt: at }))).toBe(
+        'INVALID_DATA',
+      );
     });
 
     it('lets one team claim a ticket, across all its versions', async () => {
       await db.createTicket('100', { description: 'a', reportedAt: at });
       await db.claimTicket('100', 1, 'CYBER1');
-      await db.claimTicket('100', 1, 'CYBER1');  // same team again is fine
+      await db.claimTicket('100', 1, 'CYBER1'); // same team again is fine
       expect(await dbError(db.claimTicket('100', 1, 'CYBER2'))).toBe('INVALID_DATA');
       await db.editTicket('100', 1, { description: 'b' });
       expect((await db.getTicket('100', 1)).claimedBy).toBe('CYBER1');
-      expect((await db.listTickets()).map(t => t.claimedBy)).toEqual(['CYBER1']);
+      expect((await db.listTickets()).map((t) => t.claimedBy)).toEqual(['CYBER1']);
     });
 
     it('records notifications for existing tickets only', async () => {
       await db.createTicket('100', { description: 'a', reportedAt: at });
       await db.notifyTeams('100', 1, ['LEGAL', 'CYBER1']);
       expect(await dbError(db.notifyTeams('100', 9, ['LEGAL']))).toBe('UUID_DNE');
-      expect((await db.getAuditLog('100')).map(e => e.eventType)).toContain('TEAMS_NOTIFIED');
+      expect((await db.getAuditLog('100')).map((e) => e.eventType)).toContain('TEAMS_NOTIFIED');
     });
   });
 
@@ -128,7 +150,7 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       await db.createTicket('100', { description: 'a', reportedAt: at });
       await db.logEvent('100', 'CUSTOM', { x: 1 });
       const log = await db.getAuditLog('100');
-      expect(log.map(e => e.eventType)).toEqual(['INCIDENT_CREATED', 'INCIDENT_READ', 'TICKET_CREATED', 'CUSTOM']);
+      expect(log.map((e) => e.eventType)).toEqual(['INCIDENT_CREATED', 'INCIDENT_READ', 'TICKET_CREATED', 'CUSTOM']);
       expect(log.at(-1)!.payload).toEqual({ x: 1 });
     });
 
@@ -136,8 +158,8 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       await newIncident();
       await Promise.all(Array.from({ length: 20 }, (_, i) => db.logEvent('100', 'CONCURRENT', { i })));
       const log = await db.getAuditLog('100');
-      expect(log.filter(e => e.eventType === 'CONCURRENT')).toHaveLength(20);
-      expect(new Set(log.map(e => e.seq)).size).toBe(log.length);
+      expect(log.filter((e) => e.eventType === 'CONCURRENT')).toHaveLength(20);
+      expect(new Set(log.map((e) => e.seq)).size).toBe(log.length);
       expect(await db.verifyAuditChain()).toEqual({ ok: true });
     });
 
@@ -145,8 +167,11 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       await newIncident();
       await db.createTicket('100', { description: 'a', reportedAt: at });
       const raw = await mysql.createConnection({
-        host: process.env.DB_HOST ?? 'localhost', port: Number(process.env.DB_PORT ?? 3306),
-        user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME ?? 'seccheck',
+        host: process.env.DB_HOST ?? 'localhost',
+        port: Number(process.env.DB_PORT ?? 3306),
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME ?? 'seccheck',
       });
       try {
         await expect(raw.query("UPDATE audit_log SET event_type = 'X'")).rejects.toThrow(/append-only/);
@@ -166,7 +191,7 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       await db.reset();
       expect(await db.listIncidents()).toEqual([]);
       expect(await db.listDependencies()).toEqual([]);
-      expect((await db.listTeams()).map(t => t.name).sort()).toEqual(['CYBER1', 'CYBER2', 'LEGAL']);
+      expect((await db.listTeams()).map((t) => t.name).sort()).toEqual(['CYBER1', 'CYBER2', 'LEGAL']);
       expect(await db.verifyAuditChain()).toEqual({ ok: true });
     });
   });

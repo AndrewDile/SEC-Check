@@ -7,7 +7,11 @@
     "test:api": "vitest run test/api.test.ts",
     "dev": "tsx watch src/coreapi.ts",
     "build": "tsc",
-    "start": "node dist/coreapi.js"
+    "start": "node dist/coreapi.js",
+    "lint": "tsc --noEmit && tsc -p test && biome check --formatter-enabled=false .",
+    "format": "biome format --write .",
+    "lint:fix": "biome check --formatter-enabled=false --write .",
+    "format:check": "biome format ."
   },
   "type": "module",
   "private": true,
@@ -16,6 +20,7 @@
     "mysql2": "^3.24.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
     "tsx": "^4.23.15",
