@@ -3,6 +3,8 @@
 //   DB_HOST=127.0.0.1 DB_USER=... DB_PASSWORD=... npm run test:db
 import mysql from 'mysql2/promise';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { addBusinessDays, newYorkDate } from '../src/calendar.js';
+import { runIn } from '../src/context.js';
 import { DbError } from '../src/db/api.js';
 import { MySqlDb } from '../src/db/mysql.js';
 
@@ -123,6 +125,21 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       expect((await db.listTickets()).map((t) => t.claimedBy)).toEqual(['CYBER1']);
     });
 
+    it('lets only one of two teams claiming at once win', async () => {
+      await db.createTicket('100', { description: 'a', reportedAt: at });
+      const results = await Promise.allSettled([
+        db.claimTicket('100', 1, 'CYBER1'),
+        db.claimTicket('100', 1, 'CYBER2'),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    });
+
+    it('gives concurrent edits distinct versions', async () => {
+      await db.createTicket('100', { description: 'a', reportedAt: at });
+      await Promise.all(Array.from({ length: 5 }, (_, i) => db.editTicket('100', 1, { description: `v${i}` })));
+      expect((await db.getTicket('100', 1)).version).toBe(6);
+    });
+
     it('records notifications for existing tickets only', async () => {
       await db.createTicket('100', { description: 'a', reportedAt: at });
       await db.notifyTeams('100', 1, ['LEGAL', 'CYBER1']);
@@ -180,6 +197,94 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       } finally {
         await raw.end();
       }
+    });
+  });
+
+  describe('materiality and the filing deadline', () => {
+    beforeEach(() => newIncident());
+
+    it('sets the deadline at the first MATERIAL determination and keeps it', async () => {
+      const material = await db.editIncident('100', { materiality: 'MATERIAL' });
+      expect(material.filingDeadline).toBe(
+        addBusinessDays(
+          newYorkDate(material.materialAt!),
+          4,
+          new Set(['2026-11-11', '2026-11-26', '2026-12-25', '2027-01-01', '2027-01-18']),
+        ),
+      );
+      await db.editIncident('100', { materiality: 'IMMATERIAL' }, 'Contained.');
+      const again = await db.editIncident('100', { materiality: 'MATERIAL' });
+      expect(again).toMatchObject({ filingDeadline: material.filingDeadline, materialAt: material.materialAt });
+    });
+
+    it('needs a note to reverse MATERIAL, and audits the reversal', async () => {
+      await db.editIncident('100', { materiality: 'MATERIAL' });
+      expect(await dbError(db.editIncident('100', { materiality: 'UNDECIDED' }))).toBe('INVALID_DATA');
+      expect(await dbError(db.editIncident('100', { materiality: 'IMMATERIAL' }, '  '))).toBe('INVALID_DATA');
+      await db.editIncident('100', { materiality: 'IMMATERIAL' }, 'Contained.');
+      expect((await db.getAuditLog('100')).at(-1)).toMatchObject({
+        eventType: 'MATERIALITY_REVERSED',
+        payload: { before: { materiality: 'MATERIAL' }, after: { materiality: 'IMMATERIAL' }, note: 'Contained.' },
+      });
+    });
+  });
+
+  describe('users and team members', () => {
+    it('restores the default users and members on reset', async () => {
+      expect((await db.listUsers()).map((u) => u.username).sort()).toEqual([
+        'alice',
+        'bob',
+        'carol',
+        'core-gateway',
+        'dana',
+      ]);
+      expect((await db.getUser('dana')).teams).toEqual(['CYBER1', 'LEGAL']);
+    });
+
+    it('adds members, and notifies them at their contact', async () => {
+      await db.createUser({ username: 'erin', contactChannel: 'email', contactAddress: 'erin@example.com' });
+      await db.createTeam('EMPTY');
+      await db.addMember('CYBER2', 'erin');
+      expect(await dbError(db.addMember('CYBER2', 'erin'))).toBe('USER_EXISTS');
+      expect((await db.getTeam('CYBER2')).members).toEqual(['bob', 'core-gateway', 'erin']);
+      const contacts = await db.listContacts();
+      expect(contacts).toContainEqual({
+        team: 'CYBER2',
+        username: 'erin',
+        channel: 'email',
+        address: 'erin@example.com',
+      });
+      expect(contacts).toContainEqual({ team: 'CYBER2', username: 'bob', channel: 'log', address: 'bob' });
+      expect(contacts).toContainEqual({ team: 'EMPTY', channel: 'log', address: 'EMPTY' });
+      expect(await dbError(db.addMember('CYBER2', 'mallory'))).toBe('USER_DNE');
+      expect(await dbError(db.addMember('GHOST', 'erin'))).toBe('TEAM_DNE');
+      await db.removeUser('erin');
+      expect((await db.getTeam('CYBER2')).members).not.toContain('erin');
+    });
+  });
+
+  describe('scopes and test sessions', () => {
+    it('keeps each session apart from the real data, records the actor, and purges it once ended', async () => {
+      await newIncident('100');
+      const scope = await db.createSession(`db-test-${Date.now()}`);
+      await runIn({ scope, actor: 'alice' }, async () => {
+        expect(await db.listIncidents()).toEqual([]);
+        await newIncident('100');
+        expect((await db.getAuditLog('100')).map((e) => e.actor)).toEqual(['alice']);
+        expect(await db.verifyAuditChain()).toEqual({ ok: true });
+      });
+      expect((await db.getAuditLog('100')).map((e) => e.actor)).toEqual(['Unknown']);
+
+      await db.endSession(scope, { done: true });
+      expect(await db.purgeEndedSessions(new Date(Date.now() + 1000))).toBeGreaterThanOrEqual(1);
+      await runIn({ scope, actor: 'alice' }, async () => expect(await db.listIncidents()).toEqual([]));
+      expect((await db.listIncidents()).map((i) => i.incidentId)).toEqual(['100']);
+    });
+
+    it('rejects a session ID that was already used', async () => {
+      const id = `db-test-${Date.now()}-again`;
+      await db.createSession(id);
+      expect(await dbError(db.createSession(id))).toBe('UUID_EXISTS');
     });
   });
 

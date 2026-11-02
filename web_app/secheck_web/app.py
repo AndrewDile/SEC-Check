@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlsplit
 
 from .config import Settings
-from .core_client import CoreClient
+from .core_client import CURRENT_USER, CoreClient
 from .errors import WebAppError, invalid
 from .handlers import EXTENSIONS, OPERATIONS, Context, Request, User
 from .validation import Spec, coerce_query
@@ -96,6 +96,7 @@ class WebApp:
             req = Request(method=method, path=path, path_params=params, headers=headers)
             if route.meta.get("auth", True):
                 req.user = self._authenticate(headers)
+                CURRENT_USER.set(req.user.name)
             req.json = self._parse_body(body)
             if route.meta.get("spec"):
                 self._validate(route.meta["op"], route.meta["path_item"], req, url.query)

@@ -2,6 +2,7 @@
 // Core API makes to them. Contracts: ingestion_worker/ and notification_service/ *.openapi.yaml.
 import { randomInt, timingSafeEqual } from 'node:crypto';
 import express from 'express';
+import { current } from './context.js';
 import { type Database, DbError } from './db/api.js';
 
 const COMPANY_ID = 'default'; // one company per deployment
@@ -9,11 +10,13 @@ const WORKER_URL = process.env.WORKER_URL;
 const NOTIFIER_URL = process.env.NOTIFIER_URL;
 const WEB_APP_URL = process.env.WEB_APP_URL ?? 'http://localhost:8000';
 
-function requireToken(token: string | undefined): express.RequestHandler {
+// The token says which service is calling, so that's the actor in the audit log
+function requireToken(token: string | undefined, actor: string): express.RequestHandler {
   return (req, res, next) => {
     const got = Buffer.from(req.get('authorization') ?? '');
     const want = Buffer.from(`Bearer ${token}`);
     if (!token || got.length !== want.length || !timingSafeEqual(got, want)) return res.status(401).end();
+    current().actor = actor;
     next();
   };
 }
@@ -69,11 +72,12 @@ export const worker = {
 
 async function notify(db: Database, incident: { id: string }) {
   if (!NOTIFIER_URL) return;
-  const recipients = (await db.listTeams()).map((t) => ({
-    recipient_id: `${t.name}:log`,
-    team_name: t.name,
-    channel: 'log',
-    address: t.name,
+  // Each team member at their contact; a team with no members gets one notice in the log
+  const recipients = (await db.listContacts()).map((c) => ({
+    recipient_id: `${c.team}:${c.username ?? c.channel}`,
+    team_name: c.team,
+    channel: c.channel,
+    address: c.address,
   }));
   send(`notif:${incident.id}`, `Notification ${incident.id}`, `${NOTIFIER_URL}/notifications`, {
     method: 'POST',
@@ -93,45 +97,53 @@ export function servicesRouter(db: Database) {
 
   // Ingestion worker
 
-  router.get('/ingest/dependencies', requireToken(process.env.INGEST_CORE_API_TOKEN), async (_req, res) => {
-    res.json((await db.listDependencies()).map(toWorkerDependency));
-  });
+  router.get(
+    '/ingest/dependencies',
+    requireToken(process.env.INGEST_CORE_API_TOKEN, 'ingestion-worker'),
+    async (_req, res) => {
+      res.json((await db.listDependencies()).map(toWorkerDependency));
+    },
+  );
 
-  router.post('/ingest/incidents', requireToken(process.env.INGEST_CORE_API_TOKEN), async (req, res) => {
-    const body = req.body ?? {};
-    for (const field of ['source', 'external_id', 'title', 'summary', 'source_url', 'detected_at']) {
-      if (typeof body[field] !== 'string') throw new DbError('INVALID_DATA', `${field} is required.`);
-    }
-    const existing = await db.findIncidentBySource(body.source, body.external_id);
-    if (existing) return res.status(200).json(existing.ingest);
-
-    for (let attempt = 1; ; attempt++) {
-      const id = String(randomInt(1e11, 1e12)); // 12-digit Incident_ID, like the web app's
-      const stored = { ...body, id, created_at: new Date().toISOString() };
-      try {
-        await db.createIncident({
-          incidentId: id,
-          description: `${body.title}\n\n${body.summary}\n\nSource: ${body.source_url}`.slice(0, 5000),
-          dependencyName: body.matched_dependencies?.[0]?.dependency_id,
-          reportedAt: new Date(body.detected_at),
-          source: body.source,
-          externalId: body.external_id,
-          ingest: stored,
-        });
-      } catch (e) {
-        if (e instanceof DbError && e.type === 'UUID_EXISTS' && attempt < 5) continue;
-        throw e;
+  router.post(
+    '/ingest/incidents',
+    requireToken(process.env.INGEST_CORE_API_TOKEN, 'ingestion-worker'),
+    async (req, res) => {
+      const body = req.body ?? {};
+      for (const field of ['source', 'external_id', 'title', 'summary', 'source_url', 'detected_at']) {
+        if (typeof body[field] !== 'string') throw new DbError('INVALID_DATA', `${field} is required.`);
       }
-      await notify(db, stored);
-      return res.status(201).json(stored);
-    }
-  });
+      const existing = await db.findIncidentBySource(body.source, body.external_id);
+      if (existing) return res.status(200).json(existing.ingest);
+
+      for (let attempt = 1; ; attempt++) {
+        const id = String(randomInt(1e11, 1e12)); // 12-digit Incident_ID, like the web app's
+        const stored = { ...body, id, created_at: new Date().toISOString() };
+        try {
+          await db.createIncident({
+            incidentId: id,
+            description: `${body.title}\n\n${body.summary}\n\nSource: ${body.source_url}`.slice(0, 5000),
+            dependencyName: body.matched_dependencies?.[0]?.dependency_id,
+            reportedAt: new Date(body.detected_at),
+            source: body.source,
+            externalId: body.external_id,
+            ingest: stored,
+          });
+        } catch (e) {
+          if (e instanceof DbError && e.type === 'UUID_EXISTS' && attempt < 5) continue;
+          throw e;
+        }
+        await notify(db, stored);
+        return res.status(201).json(stored);
+      }
+    },
+  );
 
   // Notification service
 
   router.post<{ id: string }>(
     '/notif/notifications/:id/results',
-    requireToken(process.env.NOTIF_CORE_API_TOKEN),
+    requireToken(process.env.NOTIF_CORE_API_TOKEN, 'notification-service'),
     async (req, res) => {
       const incident = await db.getIncident(req.params.id).catch((e) => {
         if (e instanceof DbError && e.type === 'UUID_DNE') return undefined;
