@@ -147,6 +147,7 @@ def record_decision(ctx: Context, req: Request) -> Dict[str, Any]:
             materiality=new["Materiality"],
             severity=new["Severity"],
             urgency=new["Urgency"],
+            note=body["Rationale"],
         )
         determined_at = ctx.now()
         ticket = ctx.core.ticket_new(
