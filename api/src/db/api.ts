@@ -98,6 +98,11 @@ export interface Database {
   getIncident(incidentId: string): Promise<Incident>; // UUID_DNE
   listIncidents(): Promise<Incident[]>;
   findIncidentBySource(source: string, externalId: string): Promise<Incident | undefined>; // /ingest/incidents dedupe
+  // Adds the matches the worker's stored payload doesn't have yet, and returns the IDs it added
+  addIncidentMatches(
+    incidentId: string,
+    matches: { dependency_id: string }[],
+  ): Promise<{ ingest: unknown; added: string[] }>; // UUID_DNE
 
   // /tickets
   createTicket(

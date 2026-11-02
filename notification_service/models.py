@@ -12,7 +12,7 @@ type SourceName = Literal["cisa_kev", "sec_edgar_8k"]
 type Priority = Literal["critical", "high", "medium", "low"]
 
 
-type Confidence = Literal["high", "medium"]
+type Confidence = Literal["high", "medium", "low"]
 
 
 class MatchedDependency(BaseModel):
@@ -59,6 +59,12 @@ class IncidentCreate(BaseModel):
     """
     Source-specific extras.
     """
+    backfill: bool | None = False
+    """
+    Found by a catch-up over events older than the worker's lookback, after a dependency
+    was added. The Core API records it without notifying anyone.
+
+    """
 
 
 class Incident(IncidentCreate):
@@ -91,7 +97,9 @@ class NotificationRequest(BaseModel):
 
     notification_id: str
     """
-    Repeating an ID is a no-op, so the Core API can safely retry.
+    Repeating an ID is a no-op, so the Core API can safely retry. It is the incident's ID,
+    followed by `:deps:<hash>` for a notice about newly matched dependencies.
+
     """
     incident: Incident
     claim_url: AnyUrl
@@ -99,6 +107,12 @@ class NotificationRequest(BaseModel):
     The web app page where a team claims the incident.
     """
     recipients: list[Recipient]
+    added_dependency_ids: list[str] | None = []
+    """
+    Set when this notice is about dependencies newly matched to an existing incident.
+    Empty for a new incident.
+
+    """
 
 
 type DeliveryStatus = Literal["delivered", "failed"]

@@ -50,7 +50,12 @@ paths:
         The worker relies on this, because every poll re-reports everything in its
         lookback window.
 
-        When it creates a new incident, the Core API notifies the company's teams itself.
+        A repeat report may name dependencies the stored incident doesn't have yet. The Core
+        API adds them and returns the updated incident. It keeps matches a later report leaves
+        out, and it doesn't change the rest of the stored incident.
+
+        When it creates a new incident or adds dependencies to one, the Core API notifies the
+        company's teams itself, unless `backfill` is set.
       tags: [Ingestion worker]
       requestBody:
         required: true
@@ -116,7 +121,7 @@ components:
 
     Confidence:
       type: string
-      enum: [high, medium]
+      enum: [high, medium, low]
 
     MatchedDependency:
       description: One of the company's dependencies that an incident may affect, and why we think so.
@@ -171,6 +176,12 @@ components:
           type: object
           default: {}
           description: Source-specific extras.
+        backfill:
+          type: boolean
+          default: false
+          description: |
+            Found by a catch-up over events older than the worker's lookback, after a dependency
+            was added. The Core API records it without notifying anyone.
 
     Incident:
       description: An incident as the Core API stores it.

@@ -31,6 +31,11 @@ No team has claimed this incident yet. To claim it, go to {claim_url}
 This notice does not decide whether the incident is material. That is for your company to decide.
 """
 
+UPDATE_INTRO = """\
+This incident was already reported. It may now also affect: {added}
+
+"""
+
 
 def dispatch(request: NotificationRequest) -> None:
     message = render(request)
@@ -52,9 +57,17 @@ def render(request: NotificationRequest) -> Message:
     for d in incident.matched_dependencies:
         version = f" {d.version}" if d.version else ""
         lines.append(f"  - {d.vendor} {d.product}{version} ({d.confidence} confidence: {d.reason})")
+    subject = (
+        f"[{incident.priority_hint.upper()}] Possible cybersecurity incident: {incident.title}"
+    )
+    intro = ""
+    if request.added_dependency_ids:
+        subject = f"Update: {subject}"
+        intro = UPDATE_INTRO.format(added=", ".join(request.added_dependency_ids))
     return Message(
-        subject=f"[{incident.priority_hint.upper()}] Possible cybersecurity incident: {incident.title}",
-        body=BODY.format(
+        subject=subject,
+        body=intro
+        + BODY.format(
             title=incident.title,
             summary=incident.summary,
             dependencies="\n".join(lines),

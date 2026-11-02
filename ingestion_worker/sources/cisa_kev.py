@@ -7,16 +7,15 @@ import httpx
 from ingestion_worker import config
 from ingestion_worker.sources.base import Source, SourceEvent
 
-KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
-
 
 class CisaKev(Source):
     name = "cisa_kev"
     poll_interval_s = config.KEV_POLL_INTERVAL_S
+    full_history = True
 
     def fetch(self, since: datetime) -> list[SourceEvent]:
         # The feed is always the whole catalog, so keep only the recent entries.
-        response = httpx.get(KEV_URL, timeout=60)
+        response = httpx.get(config.KEV_URL, timeout=60)
         response.raise_for_status()
         return [
             _to_event(entry)

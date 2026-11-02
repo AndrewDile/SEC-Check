@@ -28,6 +28,40 @@ describe.skipIf(!enabled)('MySqlDb', () => {
   beforeEach(() => db.reset());
   afterAll(() => db.close());
 
+  describe('addIncidentMatches', () => {
+    const match = (dependency_id: string) => ({ dependency_id, confidence: 'low' });
+    const reported = () =>
+      newIncident('100', {
+        source: 'cisa_kev',
+        externalId: 'CVE-1',
+        ingest: { id: '100', title: 'T', matched_dependencies: [match('a')] },
+      });
+
+    it('adds only what is new, and stores it', async () => {
+      await reported();
+      const { ingest, added } = await db.addIncidentMatches('100', [match('a'), match('b')]);
+      expect(added).toEqual(['b']);
+      expect(ingest).toEqual({ id: '100', title: 'T', matched_dependencies: [match('a'), match('b')] });
+      expect((await db.getIncident('100')).ingest).toEqual(ingest);
+    });
+
+    it('changes nothing when no match is new', async () => {
+      await reported();
+      expect((await db.addIncidentMatches('100', [match('a')])).added).toEqual([]);
+      expect((await db.addIncidentMatches('100', [])).added).toEqual([]);
+    });
+
+    it('adds each match once when reports race', async () => {
+      await reported();
+      const results = await Promise.all([1, 2, 3].map(() => db.addIncidentMatches('100', [match('b')])));
+      expect(results.flatMap((r) => r.added)).toEqual(['b']);
+    });
+
+    it('rejects an unknown incident', async () => {
+      expect(await dbError(db.addIncidentMatches('404', [match('a')]))).toBe('UUID_DNE');
+    });
+  });
+
   describe('incidents', () => {
     it('creates with UNDECIDED defaults and reads back', async () => {
       await newIncident('100', { dependencyName: 'acme' });

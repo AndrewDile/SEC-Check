@@ -393,6 +393,28 @@ export class MySqlDb implements Database {
     return r ? toIncident(r) : undefined;
   }
 
+  async addIncidentMatches(incidentId: string, matches: { dependency_id: string }[]) {
+    return this.tx(async (c) => {
+      const incident = await this.incident(c, incidentId, true);
+      const ingest = (incident.ingest ?? {}) as { matched_dependencies?: { dependency_id: string }[] };
+      const stored = ingest.matched_dependencies ?? [];
+      const known = new Set(stored.map((m) => m.dependency_id));
+      const fresh = matches.filter((m) => !known.has(m.dependency_id));
+      const added = fresh.map((m) => m.dependency_id);
+      if (!added.length) return { ingest, added };
+
+      const updated = { ...ingest, matched_dependencies: [...stored, ...fresh] };
+      await c.query('UPDATE incidents SET ingest_json = ?, updated_at = ? WHERE scope_id = ? AND incident_id = ?', [
+        JSON.stringify(updated),
+        new Date(),
+        current().scope,
+        incidentId,
+      ]);
+      await this.audit(c, incidentId, 'INCIDENT_MATCHES_ADDED', { matches: fresh });
+      return { ingest: updated, added };
+    });
+  }
+
   // /tickets
 
   async createTicket(

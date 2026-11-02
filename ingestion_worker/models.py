@@ -37,7 +37,7 @@ type SourceName = Literal["cisa_kev", "sec_edgar_8k"]
 type Priority = Literal["critical", "high", "medium", "low"]
 
 
-type Confidence = Literal["high", "medium"]
+type Confidence = Literal["high", "medium", "low"]
 
 
 class MatchedDependency(BaseModel):
@@ -83,6 +83,12 @@ class IncidentCreate(BaseModel):
     details: dict[str, Any] | None = {}
     """
     Source-specific extras.
+    """
+    backfill: bool | None = False
+    """
+    Found by a catch-up over events older than the worker's lookback, after a dependency
+    was added. The Core API records it without notifying anyone.
+
     """
 
 
