@@ -48,6 +48,9 @@ services:
       INGEST_INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
       NOTIF_CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       NOTIF_INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
+      MIGRATIONS_DIR: /migrations   # applied at startup, each once (schema_migrations)
+    volumes:
+      - ./db/migrations:/migrations:ro
     depends_on:
       db:
         condition: service_healthy
@@ -55,6 +58,7 @@ services:
 
   db:
     image: mysql:8.4
+    command: --disable-log-bin   # no replication; with binary logging, creating triggers needs SUPER
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MYSQL_DATABASE: seccheck
@@ -63,7 +67,6 @@ services:
     ports:
       - "127.0.0.1:3306:3306"   # local tools only, never public
     volumes:
-      - ./db/migrations:/docker-entrypoint-initdb.d   # runs .sql on first start only
       - db-data:/var/lib/mysql
     healthcheck:   # TCP, so it only passes once init scripts are done
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]

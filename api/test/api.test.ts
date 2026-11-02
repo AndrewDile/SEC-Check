@@ -3,30 +3,46 @@
 //   API_URL=http://localhost:3001 npm run test:api
 // The /ingest tests are ours (not in the pod contract) and also need INGEST_CORE_API_TOKEN.
 import { beforeEach, describe, expect, it } from 'vitest';
+import { newYorkDate } from '../src/calendar.js';
 
 const API = process.env.API_URL;
 const INGEST_TOKEN = process.env.INGEST_CORE_API_TOKEN;
 const TS = '2026-09-25T20:00:00Z';
+const ID = '102356304331';
 
-async function post(path: string, body: unknown) {
+type Headers = Record<string, string>;
+
+async function post(path: string, body: unknown, headers: Headers = {}) {
   const res = await fetch(`${API}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
   return { status: res.status, body: await res.json() };
 }
 
-const newIncident = (id = '102356304331', extra = {}) =>
-  post('/incidents', {
-    Incident_ID: id,
-    Method: 'NEW',
-    Timestamp: TS,
-    Description: 'Critical API gateway timeout.',
-    ...extra,
-  });
-const newTicket = (id = '102356304331', extra = {}) =>
-  post('/tickets', { Incident_ID: id, Method: 'NEW', Timestamp: TS, Description: 'Initial triage.', ...extra });
+const newIncident = (id = ID, extra = {}, headers: Headers = {}) =>
+  post(
+    '/incidents',
+    { Incident_ID: id, Method: 'NEW', Timestamp: TS, Description: 'Critical API gateway timeout.', ...extra },
+    headers,
+  );
+const getIncident = (id = ID, headers: Headers = {}) =>
+  post('/incidents', { Incident_ID: id, Method: 'GET', Timestamp: TS, Description: '' }, headers);
+const editIncident = (extra = {}, headers: Headers = {}) =>
+  post('/incidents', { Incident_ID: ID, Method: 'EDIT', Timestamp: TS, Description: 'Updated.', ...extra }, headers);
+const newTicket = (id = ID, extra = {}, headers: Headers = {}) =>
+  post(
+    '/tickets',
+    { Incident_ID: id, Method: 'NEW', Timestamp: TS, Description: 'Initial triage.', ...extra },
+    headers,
+  );
+const auditLog = async (headers: Headers = {}) =>
+  (await post('/logs', { Incident_ID: ID, Timestamp: TS }, headers)).body.Audit_Log as {
+    Event: string;
+    Actor: string;
+    Details: Record<string, unknown>;
+  }[];
 
 function expectError(r: { status: number; body: { Error?: string } }, error: string) {
   expect(r.status).toBe(400);
@@ -54,32 +70,20 @@ describe.skipIf(!API)('Core API pod contract', () => {
       });
       expect(created.status).toBe(200);
       expect(created.body).toMatchObject({
-        Incident_ID: '102356304331',
+        Incident_ID: ID,
         Status: 'Created',
         Materiality: 'MATERIAL',
         Severity: 'HIGH',
         Urgency: 'URGENT',
       });
 
-      const got = await post('/incidents', {
-        Incident_ID: '102356304331',
-        Method: 'GET',
-        Timestamp: TS,
-        Description: '',
-      });
-      expect(got.body).toMatchObject({
+      expect((await getIncident()).body).toMatchObject({
         Status: 'Data Fetched',
         Description: 'Critical API gateway timeout.',
         Dependency: 'auth-service-v2',
       });
 
-      const edited = await post('/incidents', {
-        Incident_ID: '102356304331',
-        Method: 'EDIT',
-        Timestamp: TS,
-        Description: 'Updated.',
-        Materiality: 'IMMATERIAL',
-      });
+      const edited = await editIncident({ Materiality: 'IMMATERIAL', Note: 'Re-assessed.' });
       expect(edited.body).toMatchObject({
         Status: 'Edited',
         Description: 'Updated.',
@@ -99,10 +103,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
     it('rejects a duplicate or unknown Incident_ID', async () => {
       await newIncident();
       expectError(await newIncident(), 'UUID_EXISTS');
-      expectError(
-        await post('/incidents', { Incident_ID: '000000000001', Method: 'GET', Timestamp: TS, Description: '' }),
-        'UUID_DNE',
-      );
+      expectError(await getIncident('000000000001'), 'UUID_DNE');
     });
 
     it('rejects invalid data', async () => {
@@ -113,6 +114,27 @@ describe.skipIf(!API)('Core API pod contract', () => {
         await post('/incidents', { Incident_ID: '1', Method: 'DELETE', Timestamp: TS, Description: '' }),
         'INVALID_DATA',
       );
+    });
+
+    it('starts the filing deadline at the first MATERIAL determination and never restarts it (REQ-04)', async () => {
+      await newIncident();
+      expect((await getIncident()).body.Filing_Deadline).toBeUndefined();
+      const deadline = (await editIncident({ Materiality: 'MATERIAL' })).body.Filing_Deadline;
+      expect(deadline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(deadline > newYorkDate(new Date())).toBe(true);
+      expect([0, 6]).not.toContain(new Date(`${deadline}T00:00:00Z`).getUTCDay());
+
+      expect((await editIncident({ Materiality: 'IMMATERIAL' })).body.Message).toMatch(/Note/);
+      const reversed = await editIncident({ Materiality: 'IMMATERIAL', Note: 'Contained before any data left.' });
+      expect(reversed.body.Filing_Deadline).toBeUndefined();
+      expect((await editIncident({ Materiality: 'MATERIAL' })).body.Filing_Deadline).toBe(deadline);
+
+      const reversal = (await auditLog()).find((e) => e.Event === 'MATERIALITY_REVERSED');
+      expect(reversal?.Details).toEqual({
+        before: { description: 'Updated.', materiality: 'MATERIAL' },
+        after: { description: 'Updated.', materiality: 'IMMATERIAL' },
+        note: 'Contained before any data left.',
+      });
     });
   });
 
@@ -127,8 +149,8 @@ describe.skipIf(!API)('Core API pod contract', () => {
       });
       expect(r.status).toBe(200);
       expect(r.body).toMatchObject({
-        Incident_ID: '102356304331',
-        Ticket_ID: '102356304331_1_1',
+        Incident_ID: ID,
+        Ticket_ID: `${ID}_1_1`,
         Status: 'Logged',
         UUID_Description: 'Critical API gateway timeout.',
         Ticket_Description: 'Initial triage.',
@@ -143,31 +165,32 @@ describe.skipIf(!API)('Core API pod contract', () => {
     it('keeps old versions when a ticket is edited', async () => {
       await newTicket();
       const edited = await post('/tickets', {
-        Incident_ID: '102356304331',
+        Incident_ID: ID,
         Method: 'EDIT',
         Timestamp: TS,
-        Ticket_number: '102356304331_1',
+        Ticket_number: `${ID}_1`,
         Description: 'Second look.',
       });
-      expect(edited.body).toMatchObject({ Ticket_ID: '102356304331_1_2', Status: 'Edited' });
+      expect(edited.body).toMatchObject({ Ticket_ID: `${ID}_1_2`, Status: 'Edited' });
 
       const latest = await post('/tickets', {
-        Incident_ID: '102356304331',
+        Incident_ID: ID,
         Method: 'GET',
         Timestamp: TS,
-        Ticket_number: '102356304331_1',
+        Ticket_number: `${ID}_1`,
       });
       expect(latest.body).toMatchObject({
-        Ticket_ID: '102356304331_1_2',
+        Ticket_ID: `${ID}_1_2`,
         Status: 'Displayed',
         Ticket_Description: 'Second look.',
       });
 
+      // a strong ID, as /logs lists them, gives that version (LIM-05)
       const first = await post('/tickets', {
-        Incident_ID: '102356304331',
+        Incident_ID: ID,
         Method: 'GET',
         Timestamp: TS,
-        Ticket_number: '102356304331_1_1',
+        Ticket_number: `${ID}_1_1`,
       });
       expect(first.body.Ticket_Description).toBe('Initial triage.');
     });
@@ -175,14 +198,27 @@ describe.skipIf(!API)('Core API pod contract', () => {
     it('rejects unknown incidents and tickets', async () => {
       expectError(await newTicket('000000000001'), 'UUID_DNE');
       expectError(
-        await post('/tickets', {
-          Incident_ID: '102356304331',
-          Method: 'GET',
-          Timestamp: TS,
-          Ticket_number: '102356304331_9',
-        }),
+        await post('/tickets', { Incident_ID: ID, Method: 'GET', Timestamp: TS, Ticket_number: `${ID}_9` }),
         'UUID_DNE',
       );
+    });
+
+    it('lists the latest version of every ticket', async () => {
+      await newTicket(undefined, { Team_list: ['LEGAL'] });
+      await newTicket();
+      await post('/tickets', {
+        Incident_ID: ID,
+        Method: 'EDIT',
+        Timestamp: TS,
+        Ticket_number: `${ID}_1`,
+        Description: 'v2',
+      });
+      const r = await post('/tickets', { Method: 'LIST' });
+      expect(r.body.Tickets.map((t: { Ticket_ID: string }) => t.Ticket_ID)).toEqual([`${ID}_1_2`, `${ID}_2_1`]);
+      expect(r.body.Tickets[0]).toMatchObject({
+        Team_List: ['LEGAL'],
+        UUID_Description: 'Critical API gateway timeout.',
+      });
     });
   });
 
@@ -196,37 +232,40 @@ describe.skipIf(!API)('Core API pod contract', () => {
       const notified = await post('/notifier', {
         Team_Names: ['CYBER1', 'CYBER2'],
         Method: 'NOTIFY',
-        Ticket_Number: '102356304331_1',
+        Ticket_Number: `${ID}_1`,
       });
-      expect(notified.body).toEqual({ UUID: 102356304331, Ticket_Number: '102356304331_1', Status: 'Notified team' });
+      expect(notified.body).toEqual({ UUID: 102356304331, Ticket_Number: `${ID}_1`, Status: 'Notified team' });
 
-      const claimed = await post('/notifier', {
-        Team_Names: ['CYBER1'],
-        Method: 'CLAIM',
-        Ticket_Number: '102356304331_1',
-      });
+      const claimed = await post('/notifier', { Team_Names: ['CYBER1'], Method: 'CLAIM', Ticket_Number: `${ID}_1` });
       expect(claimed.body.Status).toBe('Claimed ticket');
       expectError(
-        await post('/notifier', { Team_Names: ['CYBER2'], Method: 'CLAIM', Ticket_Number: '102356304331_1' }),
+        await post('/notifier', { Team_Names: ['CYBER2'], Method: 'CLAIM', Ticket_Number: `${ID}_1` }),
         'INVALID_DATA',
       );
 
       const ticket = await post('/tickets', {
-        Incident_ID: '102356304331',
+        Incident_ID: ID,
         Method: 'GET',
         Timestamp: TS,
-        Ticket_number: '102356304331_1',
+        Ticket_number: `${ID}_1`,
       });
       expect(ticket.body.Ticket_Claim).toBe('CLAIMED');
     });
 
+    it('lets only one of two teams claiming at once win', async () => {
+      const claim = (team: string) =>
+        post('/notifier', { Team_Names: [team], Method: 'CLAIM', Ticket_Number: `${ID}_1` });
+      const results = await Promise.all([claim('CYBER1'), claim('CYBER2')]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 400]);
+    });
+
     it('rejects empty or unknown teams', async () => {
       expectError(
-        await post('/notifier', { Team_Names: [], Method: 'CLAIM', Ticket_Number: '102356304331_1' }),
+        await post('/notifier', { Team_Names: [], Method: 'CLAIM', Ticket_Number: `${ID}_1` }),
         'INVALID_DATA',
       );
       expectError(
-        await post('/notifier', { Team_Names: ['NOPE'], Method: 'NOTIFY', Ticket_Number: '102356304331_1' }),
+        await post('/notifier', { Team_Names: ['NOPE'], Method: 'NOTIFY', Ticket_Number: `${ID}_1` }),
         'INVALID_DATA',
       );
     });
@@ -238,27 +277,48 @@ describe.skipIf(!API)('Core API pod contract', () => {
       await newTicket();
       await newTicket();
       await post('/tickets', {
-        Incident_ID: '102356304331',
+        Incident_ID: ID,
         Method: 'EDIT',
         Timestamp: TS,
-        Ticket_number: '102356304331_1',
+        Ticket_number: `${ID}_1`,
         Description: 'Edit.',
       });
-      const r = await post('/logs', { Incident_ID: '102356304331', Timestamp: TS });
+      const r = await post('/logs', { Incident_ID: ID, Timestamp: TS });
       expect(r.body).toMatchObject({
-        Incident_ID: '102356304331',
+        Incident_ID: ID,
         Materiality_type: 'MATERIAL',
         Status: 'Log Retrieved',
-        Ticket_ID_List: ['102356304331_1_1', '102356304331_2_1', '102356304331_1_2'],
+        Ticket_ID_List: [`${ID}_1_1`, `${ID}_2_1`, `${ID}_1_2`],
       });
+    });
+
+    it('returns the audit log with who did what, reads included (REQ-02, AC-02)', async () => {
+      await newIncident(undefined, {}, { 'x-user': 'alice' });
+      await newTicket(undefined, {}, { 'x-user': 'carol' });
+      await getIncident();
+      await post(
+        '/notifier',
+        { Team_Names: ['LEGAL'], Method: 'NOTIFY', Ticket_Number: `${ID}_1` },
+        { 'x-user': 'dana' },
+      );
+      expect((await auditLog()).map((e) => [e.Event, e.Actor])).toEqual([
+        ['INCIDENT_CREATED', 'alice'],
+        ['TICKET_CREATED', 'carol'], // no INCIDENT_READ for reading the incident into the ticket response
+        ['INCIDENT_READ', 'Unknown'],
+        ['TEAMS_NOTIFIED', 'dana'],
+      ]);
+      expect((await auditLog()).at(-1)).toMatchObject({ Event: 'LOG_READ' });
+    });
+
+    it('rejects a user that does not exist, or that is a service', async () => {
+      expectError(await newIncident(undefined, {}, { 'x-user': 'mallory' }), 'INVALID_DATA');
+      expectError(await newIncident(undefined, {}, { 'x-user': 'ingestion-worker' }), 'INVALID_DATA');
+      expectError(await newIncident(undefined, {}, { 'x-user': 'Unknown' }), 'INVALID_DATA');
     });
 
     it('rejects a future timestamp and unknown incidents', async () => {
       await newIncident();
-      expectError(
-        await post('/logs', { Incident_ID: '102356304331', Timestamp: '2999-09-25T20:30:00Z' }),
-        'INVALID_DATA',
-      );
+      expectError(await post('/logs', { Incident_ID: ID, Timestamp: '2999-09-25T20:30:00Z' }), 'INVALID_DATA');
       expectError(await post('/logs', { Incident_ID: '000000000001', Timestamp: TS }), 'UUID_DNE');
     });
   });
@@ -288,6 +348,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
   describe('/teams', () => {
     const teams = (body: Record<string, unknown>) => post('/teams', body);
     const names = async () => (await teams({ Method: 'LIST' })).body.Team_List;
+    const members = async (team: string) => [...(await teams({ Team_Name: team, Method: 'GET' })).body.Members].sort();
 
     it('starts with the default teams after a reset', async () => {
       expect((await teams({ Method: 'LIST' })).body).toEqual({
@@ -303,6 +364,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
       });
       expect((await teams({ Team_Name: 'Red Team', Method: 'GET' })).body).toEqual({
         Team_Name: 'Red Team',
+        Members: [],
         Status: 'Team Received',
       });
       expect(await names()).toContain('Red Team');
@@ -323,10 +385,30 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER' }), 'INVALID_DATA');
     });
 
-    it('rejects ADD_USER and REMOVE_USER until the database stores members', async () => {
-      const r = await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'alice' });
-      expectError(r, 'INVALID_DATA');
-      expect(r.body.Message).toMatch(/not stored/);
+    it('starts with the default members, and adds and removes them', async () => {
+      expect(await members('LEGAL')).toEqual(['carol', 'core-gateway', 'dana']);
+      expect((await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'alice' })).body).toEqual({
+        Team_Name: 'LEGAL',
+        Username: 'alice',
+        Status: 'User added',
+      });
+      expect(await members('LEGAL')).toContain('alice');
+      expect((await teams({ Team_Name: 'LEGAL', Method: 'REMOVE_USER', Username: 'alice' })).body.Status).toBe(
+        'User removed',
+      );
+      expect(await members('LEGAL')).not.toContain('alice');
+    });
+
+    it('rejects adding a member twice, removing a non-member, and unknown users or teams (v1.0.2)', async () => {
+      expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'carol' }), 'USER_EXISTS');
+      expectError(await teams({ Team_Name: 'LEGAL', Method: 'REMOVE_USER', Username: 'alice' }), 'USER_DNE');
+      expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'mallory' }), 'USER_DNE');
+      expectError(await teams({ Team_Name: 'GHOST', Method: 'ADD_USER', Username: 'alice' }), 'TEAM_DNE');
+    });
+
+    it('also takes DELETE for REMOVE', async () => {
+      await teams({ Team_Name: 'Red Team', Method: 'NEW' });
+      expect((await teams({ Team_Name: 'Red Team', Method: 'DELETE' })).body.Status).toBe('Removed');
     });
 
     it('lets tickets and the notifier use only existing teams', async () => {
@@ -335,7 +417,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expect((await newTicket(undefined, { Team_list: ['Red Team'] })).status).toBe(200);
       expectError(await newTicket(undefined, { Team_list: ['Blue Team'] }), 'INVALID_DATA');
       expectError(
-        await post('/notifier', { Team_Names: ['Blue Team'], Method: 'NOTIFY', Ticket_Number: '102356304331_1' }),
+        await post('/notifier', { Team_Names: ['Blue Team'], Method: 'NOTIFY', Ticket_Number: `${ID}_1` }),
         'INVALID_DATA',
       );
     });
@@ -349,43 +431,130 @@ describe.skipIf(!API)('Core API pod contract', () => {
     });
   });
 
+  describe('/users', () => {
+    const users = (body: Record<string, unknown>) => post('/users', body);
+
+    it('starts with the default users', async () => {
+      const list = (await users({ Method: 'LIST' })).body.Users.map((u: { Username: string }) => u.Username);
+      expect(list.sort()).toEqual(['alice', 'bob', 'carol', 'core-gateway', 'dana']);
+    });
+
+    it('creates, edits, fetches and removes a user', async () => {
+      expect(
+        (
+          await users({
+            Username: 'erin',
+            Method: 'NEW',
+            Auth_Hash: 'hash-1',
+            Contact: 'erin@example.com',
+            Display_Name: 'Erin',
+            Contact_Channel: 'email',
+          })
+        ).body,
+      ).toEqual({
+        Username: 'erin',
+        Display_Name: 'Erin',
+        Contact: 'erin@example.com',
+        Contact_Channel: 'email',
+        Teams: [],
+        Status: 'Created',
+      });
+      await post('/teams', { Team_Name: 'CYBER2', Method: 'ADD_USER', Username: 'erin' });
+      expect(
+        (await users({ Username: 'erin', Method: 'EDIT', Contact: 'e@example.com', Auth_Hash: 'hash-2' })).body,
+      ).toMatchObject({ Contact: 'e@example.com', Teams: ['CYBER2'], Status: 'Edited' });
+      expect((await users({ Username: 'erin', Method: 'GET' })).body.Status).toBe('User Received');
+      expect((await users({ Username: 'erin', Method: 'REMOVE' })).body).toEqual({
+        Username: 'erin',
+        Status: 'Removed',
+      });
+      expectError(await users({ Username: 'erin', Method: 'GET' }), 'USER_DNE');
+      expect((await post('/teams', { Team_Name: 'CYBER2', Method: 'GET' })).body.Members).not.toContain('erin');
+    });
+
+    it('never returns the credential, and takes DELETE for REMOVE', async () => {
+      const created = await users({ Username: 'frank', Method: 'NEW', Auth_Hash: 'secret' });
+      expect(JSON.stringify(created.body)).not.toMatch(/secret|scrypt|Auth_Hash/);
+      expect((await users({ Username: 'frank', Method: 'DELETE' })).body.Status).toBe('Removed');
+    });
+
+    it('rejects duplicates, reserved names and bad input', async () => {
+      expectError(await users({ Username: 'alice', Method: 'NEW', Auth_Hash: 'h' }), 'USER_EXISTS');
+      expectError(await users({ Username: 'erin', Method: 'NEW' }), 'INVALID_DATA'); // Auth_Hash is required
+      expectError(await users({ Username: 'Unknown', Method: 'NEW', Auth_Hash: 'h' }), 'INVALID_DATA');
+      expectError(await users({ Username: 'notification-service', Method: 'NEW', Auth_Hash: 'h' }), 'INVALID_DATA');
+      expectError(await users({ Username: '', Method: 'NEW', Auth_Hash: 'h' }), 'INVALID_DATA');
+      expectError(await users({ Username: 'x', Method: 'NEW', Auth_Hash: 'h', Contact: 5 }), 'INVALID_DATA');
+      expectError(await users({ Username: 'ghost', Method: 'EDIT' }), 'USER_DNE');
+    });
+  });
+
   describe('/test/setup and /test/report (cross-team tester)', () => {
+    const run = (n: string) => `run-${Date.now()}-${n}`;
+    const as = (id: string) => ({ 'x-session-id': id });
+    const setup = (id: string) => post('/test/setup', { session_id: id, setup: {} });
     const report = async (id?: string) => {
       const res = await fetch(`${API}/test/report${id === undefined ? '' : `?session_id=${encodeURIComponent(id)}`}`);
       return { status: res.status, body: await res.json() };
     };
 
-    it('wipes the database and makes the session active', async () => {
+    it('gives each session its own data, apart from the real data', async () => {
+      await newIncident();
       await post('/dependencies', { dp_name: 'okta', method: 'NEW' });
-      const id = `run-${Date.now()}-a`;
-      expect(await post('/test/setup', { session_id: id, setup: { teams: ['LEGAL', 'CYBER1', 'CYBER2'] } })).toEqual({
-        status: 201,
-        body: { session_id: id },
-      });
-      expect((await post('/dependencies', { dp_name: 'okta', method: 'MATCH' })).body.status).toBe('Does not Exist');
-      // default teams are back after the wipe
-      expect((await newIncident()).status).toBe(200);
-      expect((await newTicket(undefined, { Team_list: ['CYBER2'] })).status).toBe(200);
+      const a = run('a');
+      const b = run('b');
+      expect(await setup(a)).toEqual({ status: 201, body: { session_id: a } });
+      expect((await setup(b)).status).toBe(201);
 
-      const r = await report(id);
-      expect(r.status).toBe(200);
-      expect(r.body).toEqual({
-        session_id: id,
-        coverage: { code: { covered: null, total: null, basis: expect.any(String) } },
-      });
+      expectError(await getIncident(ID, as(a)), 'UUID_DNE');
+      expect((await post('/dependencies', { dp_name: 'okta', method: 'MATCH' }, as(a))).body.status).toBe(
+        'Does not Exist',
+      );
+      expect((await newIncident(undefined, {}, as(a))).status).toBe(200);
+      expect((await newIncident(undefined, {}, as(b))).status).toBe(200);
+      expect((await newTicket(undefined, { Team_list: ['CYBER2'] }, as(a))).body.Ticket_ID).toBe(`${ID}_1_1`);
+      expect((await post('/reset', { method: 'RESET' }, as(b))).status).toBe(200);
+      expectError(await getIncident(ID, as(b)), 'UUID_DNE');
+      expect((await getIncident(ID, as(a))).status).toBe(200);
+
+      // the real data is untouched
+      expect((await getIncident()).status).toBe(200);
+      expect((await post('/dependencies', { dp_name: 'okta', method: 'MATCH' })).body.status).toBe('Exists');
+      await report(a);
+      await report(b);
     });
 
-    it('allows one session at a time', async () => {
-      const first = `run-${Date.now()}-b`,
-        second = `run-${Date.now()}-c`;
-      expect((await post('/test/setup', { session_id: first })).status).toBe(201);
-      expect(await post('/test/setup', { session_id: first })).toEqual({
-        status: 409,
-        body: { message: expect.any(String), source: 'system' },
+    it('ends the session at /test/report, with its coverage and timings', async () => {
+      const id = run('c');
+      await setup(id);
+      await newIncident(undefined, {}, as(id));
+      await getIncident(ID, as(id));
+      const r = await report(id);
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({
+        session_id: id,
+        coverage: { code: { basis: expect.any(String) } },
+        metrics: {
+          requests: expect.arrayContaining([
+            expect.objectContaining({ operation: '/incidents NEW', count: 1, errors: 0 }),
+            expect.objectContaining({ operation: '/incidents GET', count: 1 }),
+          ]),
+        },
       });
-      expect((await post('/test/setup', { session_id: second })).status).toBe(201);
-      expect((await report(first)).status).toBe(404); // replaced by the new session
-      expect((await report(second)).status).toBe(200);
+      const { covered, total } = r.body.coverage.code;
+      expect(covered).toBeGreaterThan(0);
+      expect(total).toBeGreaterThanOrEqual(covered);
+
+      expect(await report(id)).toEqual(r); // stored
+      expectError(await getIncident(ID, as(id)), 'INVALID_DATA'); // ended
+      expect((await setup(id)).status).toBe(409); // session IDs are single use
+    });
+
+    it('rejects a session ID that is already active', async () => {
+      const id = run('d');
+      expect((await setup(id)).status).toBe(201);
+      expect(await setup(id)).toEqual({ status: 409, body: { message: expect.any(String), source: 'system' } });
+      await report(id);
     });
 
     it('rejects invalid requests in the tester error format', async () => {
@@ -397,6 +566,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
       }
       expect((await report()).status).toBe(400);
       expect((await report('never-set-up')).status).toBe(404);
+      expectError(await getIncident(ID, as('never-set-up')), 'INVALID_DATA');
     });
   });
 
@@ -431,7 +601,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
       ]);
     });
 
-    it('creates an incident once, then returns the stored one', async () => {
+    it('creates an incident once as the worker, then returns the stored one', async () => {
       const send = () =>
         fetch(`${API}/ingest/incidents`, { method: 'POST', headers: auth, body: JSON.stringify(report) });
       const first = await send();
@@ -441,8 +611,12 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expect(again.status).toBe(200);
       expect((await again.json()).id).toBe(created.id);
 
-      const got = await post('/incidents', { Incident_ID: created.id, Method: 'GET', Timestamp: TS, Description: '' });
-      expect(got.body).toMatchObject({ Dependency: 'Acme:Widget', Materiality: 'UNDECIDED' });
+      expect((await getIncident(created.id)).body).toMatchObject({
+        Dependency: 'Acme:Widget',
+        Materiality: 'UNDECIDED',
+      });
+      const log = (await post('/logs', { Incident_ID: created.id, Timestamp: TS })).body.Audit_Log;
+      expect(log[0]).toMatchObject({ Event: 'INCIDENT_CREATED', Actor: 'ingestion-worker' });
     });
   });
 });

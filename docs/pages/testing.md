@@ -5,13 +5,14 @@
 | Suite | Where | Count | Needs |
 |---|---|---|---|
 | Tester self-tests | `tester/tests/` | 30 | Nothing. Runs against the tester's own mock system |
-| Core API database tests | `api/test/db.test.ts` | 16 | A MySQL it can wipe. Skips unless `DB_USER` is set |
-| Core API HTTP tests | `api/test/api.test.ts` | 26 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
+| Core API calendar tests | `api/test/calendar.test.ts` | 2 | Nothing |
+| Core API database tests | `api/test/db.test.ts` | 24 | A MySQL it can wipe. Skips unless `DB_USER` is set |
+| Core API HTTP tests | `api/test/api.test.ts` | 38 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
 | Cross-team suite | `tester/secheck_tester/suite.py` | 54 | The whole stack. Run through the tester against `/system` |
-| Web app browser tests | `ui_tests/` | 71 | The stack and Playwright (`pip install -r ui_tests/requirements.txt`). Not in `./test.sh`; see `ui_tests/README.md` |
 
 **Not covered by any test in this repo:**
 
+- **Web app:** its tests (a mock Core API and unit tests) live in the pod's `Web Dev/` folder.
 - **Ingestion worker and notification service:** no tests at all.
 
 ## `./test.sh`
@@ -30,7 +31,9 @@ This runs everything, the same way CI does:
 4. Runs `tester/run_tests.py http://caddy/system --tester http://localhost/tester`, which
    exits nonzero unless all 54 tests pass.
 
-It **wipes your local database**.
+It **wipes your local database**. The cross-team suite runs in its own test session, so it
+doesn't touch that data, and its report includes the Core API's code coverage and request
+timings for the run (see [Core API](services/core-api.md#cross-team-testing-endpoints)).
 
 ## CI (`.github/workflows/ci.yml`)
 

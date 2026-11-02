@@ -7,30 +7,38 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 - **No real sign-in.** The web app lets anyone pick any user, with no password (gap G-6).
 - **The Core API's pod endpoints take no credentials.**
     - Anyone who can reach `/system/` can read and change every incident.
-    - `/system/reset` and `/system/test/setup` **wipe the database**, and anyone can call them.
+    - `/system/reset` without a test session **wipes the real data**, and anyone can call it.
+      (`/test/setup` no longer does: it makes a separate copy for the session.)
+    - **`X-User` is taken on trust.** Any caller can name any existing user, so the audit log's
+      `actor` is only as reliable as the caller.
+- **No authorization for decisions in the Core API.** Anyone can mark an incident material or
+  reverse it (with a note). Only the web app checks `decision_teams`.
+- **Test session limits are per IP.** `/test/setup` is capped at `MAX_TEST_SESSIONS` active
+  sessions and `SETUPS_PER_MINUTE` per client IP, which slows abuse but doesn't stop someone
+  from filling the active sessions.
 - **Plain HTTP only.** There's no TLS, so tokens, the `/logs/` login and all data cross the
   network unencrypted.
 - **Static tokens.** The service-to-service bearer tokens never rotate.
-- **No actor in the audit log.** `audit_log.actor` is never filled in. The acting user appears
-  only in the text of the web app's audit tickets.
 
 ## Data and the audit trail
 
-- **The audit log can't be read through any API.** `/logs` returns ticket version IDs, not audit
-  entries. `verifyAuditChain()` exists but no endpoint calls it.
-- **Resets erase the audit history.** `/reset` and `/test/setup` truncate the audit log too.
+- **The audit chain isn't verified through any API.** `/logs` returns an incident's audit
+  entries, but `verifyAuditChain()` has no endpoint, and entries not tied to an incident (teams,
+  users, dependencies, `LIST` calls) can't be read through the API.
+- **`/reset` erases the audit history** of the data it wipes.
 - **Only one company.** Every dependency belongs to `company_id: "default"`.
-- **Team members aren't in the database.**
-    - Teams are created through `/teams`, but `ADD_USER`/`REMOVE_USER` are rejected until the
-      database has a members table. The web app keeps memberships in a file instead.
-    - A team removed or reset through the Core API directly leaves its memberships in that file;
-      they're ignored while the team doesn't exist, and come back if it's created again.
+- **The web app's teams and users come from its settings.** The Core API stores teams, users and
+  members, but the web app on `main` still reads its own `settings.json`, so a user added only in
+  the web app is rejected as `X-User`.
 - **Dependencies are bare names.** They have no version, CPE, PURL or CIK, so the worker can
   match only on names, and EDGAR's CIK match never fires.
-- **No filing deadline.** The 8-K view's `Filing_Deadline` is always `null` (gap G-8).
-- **Manual schema changes.** Migrations run only on a new database volume.
+- **The web app doesn't show the filing deadline yet.** The Core API returns `Filing_Deadline`,
+  but the web app's 8-K view still has it as `null` (gap G-8).
+- **Holidays end with 2027.** `business_calendar` has to be extended for later years.
 - **Partial writes.** The web app's multi-step operations aren't atomic; a failure partway leaves
   the earlier steps in place, and reports them in `Completed_Steps`.
+- **Failed migrations need a hand.** MySQL can't roll back schema changes, so a migration that
+  fails partway has to be repaired by hand.
 
 ## Ingestion and notifications
 
@@ -57,10 +65,14 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 
 - **Missing tests.** The ingestion worker and notification service have none. The web app's
   tests aren't in this repo.
-- **No code coverage.** `/test/report` gives `null` for it, and component coverage isn't
-  measured.
-- **One test session at a time.** A new `/test/setup` ends the previous session and wipes its
-  data. Teams can't test our system concurrently.
+- **Code coverage is shared between overlapping sessions.** V8 can't tell which request ran a
+  line, so sessions running at the same time count each other's lines (`basis` names them).
+  Component coverage isn't measured.
+- **Coverage costs speed.** Precise block coverage runs for the whole Core API process.
+  `CODE_COVERAGE=off` turns it off.
+- **A restart ends every open test session**, and their timings so far are lost.
+- **Testers must send `X-Session-ID`.** A tester that names its session another way works on the
+  real data until its header is added to `SESSION_HEADERS`.
 
 ## Operations
 
@@ -69,9 +81,40 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
     - The worker has no health endpoint.
     - Only the database and web app have Docker health checks.
 - **Limited observability.**
-    - There are no metrics or alerts, and the Core API has no request log.
+    - There are no alerts. Request timings are summarized only per test session; for the real
+      data there are just the per-request log lines.
     - Container logs are lost on every deploy.
     - Container logs aren't rotated, which risks filling the small disk.
 - **Downtime on deploy.** Every deploy restarts every container, with a short outage.
 - **One server.** A single small EC2 instance with no redundancy and no automated backups of
   the database.
+
+## For the pod
+
+Open questions to settle with Team 18, since they change the shared contract or how each other's
+testers behave:
+
+- **`/reset` without a session wipes the real data.** Should it need an admin token, now that test
+  sessions have their own data?
+- **The session header.** We read `X-Session-ID`; Team 18's tester uses a different one. We need
+  one name (or both in `SESSION_HEADERS`).
+- **Reversing a materiality decision.** The spec doesn't say whether `MATERIAL` can be changed
+  back, who may do it, or whether the filing deadline restarts. We require a `Note`, audit it as
+  `MATERIALITY_REVERSED`, and never restart the deadline. A test that reverses a `MATERIAL`
+  incident without a `Note` fails against us.
+- **Per-person tasks (AC-04).** The plan's independent evaluation assigns a task with a deadline
+  to a person. We route work to teams (notify and claim) and keep one filing deadline per
+  incident.
+- **Extensions to agree on:** `Filing_Deadline` on incidents, `Note` on `EDIT`, `Audit_Log` on
+  `/logs`, `Members` on `/teams GET`, and `GET`, `LIST`, `Contact_Channel` and `Display_Name` on
+  `/users`.
+- **Gaps in contract v1.0.2:**
+    - Its Types list `DELETE` for `/teams` and `/users`, but its OpenAPI says `REMOVE`. We take both.
+    - It doesn't name the errors for adding an existing member or removing a non-member. We use
+      `USER_EXISTS` and `USER_DNE`.
+    - `Contact` is one string with no channel, so we added `Contact_Channel`.
+    - `Auth_Hash` has no defined hashing scheme and nothing verifies it yet.
+- **Multi-step operations in one request (`/batch`).** Not built. Worth deciding for Phase 5
+  whether the pod wants it, and with what limits.
+- **Still open from Phase 3:** the `Incident_ID` type (integer, string or UUID), and how to
+  handle unknown team names.
