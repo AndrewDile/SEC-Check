@@ -33,6 +33,27 @@ It remembers nothing between polls:
 - A failed report is simply tried again on the next poll.
 - An error in one source is logged and doesn't stop the others.
 
+## Catch-up for new dependencies
+
+When the Core API sends a `PUT` for a dependency, the worker wakes its poll loop and checks that
+dependency right away, rather than at the next poll. The check runs on the poll loop's thread, so
+it never overlaps a poll.
+
+- **Window:** KEV is checked over its whole catalog (`full_history` on the source); EDGAR only over
+  `LOOKBACK_DAYS`.
+- **Events inside the window:** reported as usual, so teams are notified.
+- **Older events:** reported with `backfill: true`, so they appear as incidents without a
+  notification each. Low-confidence matches are skipped, because a name like `Microsoft` would
+  otherwise add hundreds of old incidents.
+- **Failures:** the dependency stays waiting and is tried again after the next poll of any source.
+- **Restarts:** waiting checks are lost. Regular polls still cover the lookback window, but
+  older KEV entries aren't checked again.
+- **Removed dependencies:** a dependency removed before its check runs is skipped.
+
+A repeat report can name a dependency the Core API hasn't seen on that incident. The Core API
+adds it and notifies the teams again, so a dependency added later isn't missed
+([Core API](core-api.md)).
+
 ## Sources
 
 | Source | `name` | Interval | What counts as an event |
@@ -62,17 +83,31 @@ service's `generate_models.sh` (`./verify.sh --fix generated` runs both).
 ## Matching (`matching.py`)
 
 Matching uses names only, because the feeds give only names, and it never compares versions.
+
+A dependency is one free-text name. The Core API splits it at `:`, or else at the first space,
+which is often wrong: `Palo Alto Networks PAN-OS` gets the vendor `Palo`. So the rules also compare
+the whole name. Vendor names are lowercased, reduced to letters and digits, stripped of suffixes
+like *Inc*, *Corp* and *Systems*, and mapped through a short alias table (`_VENDOR_ALIASES`, for
+example *International Business Machines* to *IBM*).
+
 The rules are checked in this order:
 
-| Rule | Confidence |
-|---|---|
-| The event's vendor CIK equals the dependency's `vendor_cik` (leading zeros ignored) | high |
-| Vendor names differ (after lowercasing, keeping only letters and digits, and dropping suffixes like *Inc*, *Corp*, *Systems*) | no match |
-| The event has no product (EDGAR) | medium |
-| The product names are equal | high |
-| The event's product is "Multiple Products" | medium |
-| One product name contains the other as whole consecutive words | medium |
-| Otherwise | no match |
+| Rule | Example dependency and event | Confidence |
+|---|---|---|
+| The event's vendor CIK equals the dependency's `vendor_cik` (leading zeros ignored) | | high |
+| Same vendor, and the event has no product (EDGAR) | `Microsoft Windows`, MICROSOFT CORP | medium |
+| Same vendor, and the event's product is "Multiple Products" | `Microsoft`, Microsoft / Multiple Products | medium |
+| Same vendor, and the dependency names no product | `Microsoft`, Microsoft / Windows | low |
+| Same vendor and equal product names | `Microsoft Windows`, Microsoft / Windows | high |
+| Same vendor, and one product name contains the other as whole consecutive words | `Cisco IOS`, Cisco / IOS and IOS XE | medium |
+| Same vendor, otherwise | `Microsoft Office`, Microsoft / Windows | no match |
+| Different vendor, and the whole name is the event's product, is within it, or starts with it | `Windows`, `MOVEit`, `Windows 11` | low |
+| Otherwise | `Oracle:Java`, Sun / Java | no match |
+
+The product-only rule never applies to generic names like `Server` (`_GENERIC_WORDS`). Because it
+compares the whole name, a dependency that names another vendor doesn't match it.
+
+Matches are sent strongest first, because the Core API shows the first as the incident's dependency.
 
 Each match carries a human-readable `reason`, which ends up in the notification.
 
@@ -108,7 +143,8 @@ These two services are internal, so **Try it out** won't reach them from a brows
 | `CORE_API_TOKEN` | required | Sent to the Core API |
 | `INBOUND_TOKEN` | required | Expected from the Core API |
 | `SEC_USER_AGENT` | empty | **Required for EDGAR.** Without it, EDGAR polls fail |
-| `LOOKBACK_DAYS` | `30` | How far back each poll looks. Older events are never matched |
+| `LOOKBACK_DAYS` | `30` | How far back each poll looks. Older events are matched only by a new dependency's KEV catch-up |
 | `KEV_POLL_INTERVAL_S`, `EDGAR_POLL_INTERVAL_S` | `3600`, `900` | Poll intervals |
+| `KEV_URL`, `EDGAR_SEARCH_URL` | The real feeds | Only the end-to-end tests change these |
 | `HOST`, `PORT` | `127.0.0.1`, `8002` (the image sets `0.0.0.0`) | Where the event API listens |
 | `LOG_LEVEL` | `INFO` | Python logging level |

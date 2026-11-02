@@ -129,7 +129,8 @@ sequenceDiagram
 ```
 
 The worker doesn't remember what it reported. Each poll re-reports everything in its lookback
-window, and the Core API's `(source, external_id)` uniqueness turns repeats into no-ops.
+window, and the Core API's `(source, external_id)` uniqueness means a repeat only adds newly matched
+dependencies.
 
 ### Dependency sync (Core API → ingestion worker)
 

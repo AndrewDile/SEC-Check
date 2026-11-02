@@ -677,5 +677,92 @@ describe.skipIf(!API)('Core API pod contract', () => {
       const log = (await post('/logs', { Incident_ID: created.id, Timestamp: TS })).body.Audit_Log;
       expect(log[0]).toMatchObject({ Event: 'INCIDENT_CREATED', Actor: 'ingestion-worker' });
     });
+
+    describe('a repeat report', () => {
+      const widget = report.matched_dependencies[0];
+      const gadget = { ...widget, dependency_id: 'Acme:Gadget', product: 'Gadget', confidence: 'low' };
+      const send = async (body: object) => {
+        const res = await fetch(`${API}/ingest/incidents`, {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify(body),
+        });
+        return { status: res.status, body: await res.json() };
+      };
+      const events = async (id: string) =>
+        (await post('/logs', { Incident_ID: id, Timestamp: TS })).body.Audit_Log as {
+          Event: string;
+          Actor: string;
+          Details: { matches?: { dependency_id: string }[] };
+        }[];
+
+      it('adds newly matched dependencies, once, and keeps the rest of the incident', async () => {
+        const created = (await send(report)).body;
+        const changed = { ...report, title: 'Changed title', matched_dependencies: [gadget] };
+        const updated = await send(changed);
+        expect(updated.status).toBe(200);
+        expect(updated.body.id).toBe(created.id);
+        expect(updated.body.title).toBe('Test vuln');
+        expect(updated.body.matched_dependencies).toEqual([widget, gadget]); // keeps what this report left out
+        expect((await send(changed)).body.matched_dependencies).toEqual([widget, gadget]);
+
+        expect((await getIncident(created.id)).body.Dependency).toBe('Acme:Widget');
+        const added = (await events(created.id)).filter((e) => e.Event === 'INCIDENT_MATCHES_ADDED');
+        expect(added).toHaveLength(1);
+        expect(added[0].Actor).toBe('ingestion-worker');
+        expect(added[0].Details.matches?.map((m) => m.dependency_id)).toEqual(['Acme:Gadget']);
+      });
+
+      it('logs nothing when no dependency is new', async () => {
+        const { id } = (await send(report)).body;
+        await send(report);
+        expect((await events(id)).map((e) => e.Event)).not.toContain('INCIDENT_MATCHES_ADDED');
+      });
+
+      it('notifies for a normal report, and not for a backfill', async () => {
+        const sent = async (id: string) => (await events(id)).filter((e) => e.Event === 'NOTIFICATION_SENT').length;
+        const { id } = (await send(report)).body;
+        const before = await sent(id);
+        await send({ ...report, backfill: true, matched_dependencies: [gadget] });
+        expect(await sent(id)).toBe(before);
+        await send({ ...report, matched_dependencies: [{ ...gadget, dependency_id: 'Acme:Third' }] });
+        expect(await sent(id)).toBe(before + (before ? 1 : 0)); // only with a notifier configured
+
+        const old = await send({ ...report, external_id: 'CVE-2020-0001', backfill: true });
+        expect(old.status).toBe(201);
+        expect(old.body.backfill).toBe(true);
+        expect(await sent(old.body.id)).toBe(0);
+      });
+
+      it('rejects malformed matches', async () => {
+        for (const matched_dependencies of ['x', [{}], [null]]) {
+          expectError(await send({ ...report, matched_dependencies }), 'INVALID_DATA');
+        }
+      });
+    });
+
+    describe('notification results', () => {
+      const notifAuth = {
+        authorization: `Bearer ${process.env.NOTIF_CORE_API_TOKEN}`,
+        'content-type': 'application/json',
+      };
+
+      it.skipIf(!process.env.NOTIF_CORE_API_TOKEN)('finds the incident from an update notice ID', async () => {
+        const created = await fetch(`${API}/ingest/incidents`, {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify(report),
+        });
+        const { id } = await created.json();
+        const results = (path: string) =>
+          fetch(`${API}/notif/notifications/${path}/results`, {
+            method: 'POST',
+            headers: notifAuth,
+            body: JSON.stringify({ results: [] }),
+          });
+        expect((await results(`${id}:deps:abc`)).status).toBe(200);
+        expect((await results('000000000001:deps:abc')).status).toBe(404);
+      });
+    });
   });
 });

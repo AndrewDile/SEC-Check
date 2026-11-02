@@ -1,6 +1,7 @@
 """The ingestion pipeline: poll a source, match its events to dependencies, report incidents."""
 
 import logging
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -8,10 +9,17 @@ import httpx
 
 from ingestion_worker import config, core_api, dependency_cache
 from ingestion_worker.matching import find_matches
-from ingestion_worker.models import IncidentCreate, MatchedDependency
+from ingestion_worker.models import Dependency, IncidentCreate, MatchedDependency
 from ingestion_worker.sources.base import Source, SourceEvent
 
 log = logging.getLogger(__name__)
+
+# Dependencies waiting to be checked. The event API adds to them on its own thread.
+_pending: dict[str, Dependency] = {}
+_pending_lock = threading.Lock()
+_wake = threading.Event()
+
+_ALL_HISTORY = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def run_forever(sources: list[Source]) -> None:
@@ -22,7 +30,64 @@ def run_forever(sources: list[Source]) -> None:
             if time.monotonic() >= next_poll[source.name]:
                 poll(source)
                 next_poll[source.name] = time.monotonic() + source.poll_interval_s
-        time.sleep(max(0.0, min(next_poll.values()) - time.monotonic()))
+        run_pending_catch_ups(sources)
+        _wake.wait(max(0.0, min(next_poll.values()) - time.monotonic()))
+        _wake.clear()
+
+
+def request_catch_up(dependency: Dependency) -> None:
+    """Have the poll loop check a new dependency now, rather than at the next poll."""
+    with _pending_lock:
+        _pending[dependency.id] = dependency
+    _wake.set()
+
+
+def run_pending_catch_ups(sources: list[Source]) -> None:
+    """Check the waiting dependencies. If that fails, they wait for the next poll to try again.
+
+    This runs on the poll loop's thread, so it never overlaps a poll.
+    """
+    with _pending_lock:
+        waiting = list(_pending.values())
+        _pending.clear()
+    if waiting and not catch_up(sources, waiting):
+        with _pending_lock:
+            for dependency in waiting:
+                _pending.setdefault(dependency.id, dependency)
+
+
+def catch_up(sources: list[Source], dependencies: list[Dependency]) -> bool:
+    """Report what `dependencies` match in each source. Returns False if anything failed.
+
+    Sources with `full_history` are checked beyond the lookback window. Those older matches are
+    marked `backfill`, so they don't send a notification each, and low-confidence ones are
+    skipped, because a name like "Microsoft" would otherwise add hundreds of old incidents.
+    """
+    window_start = datetime.now(UTC) - timedelta(days=config.LOOKBACK_DAYS)
+    try:
+        current = {dependency.id: dependency for dependency in dependency_cache.get_all()}
+    except Exception:
+        log.exception("catch-up failed: could not load dependencies")
+        return False
+    # A dependency may have been removed since it was requested.
+    dependencies = [current[d.id] for d in dependencies if d.id in current]
+
+    ok = True
+    for source in sources:
+        try:
+            events = source.fetch(_ALL_HISTORY if source.full_history else window_start)
+        except Exception:  # whatever goes wrong, keep checking the other sources
+            log.exception("%s: catch-up failed", source.name)
+            ok = False
+            continue
+        for event in events:
+            backfill = event.published_at.date() < window_start.date()
+            for company_id, matches in find_matches(event, dependencies).items():
+                if backfill:
+                    matches = [match for match in matches if match.confidence != "low"]
+                if matches and not _try_report(source, event, company_id, matches, backfill):
+                    ok = False
+    return ok
 
 
 def poll(source: Source) -> bool:
@@ -44,24 +109,40 @@ def poll(source: Source) -> bool:
     ok = True
     for event in events:
         for company_id, matches in find_matches(event, dependencies).items():
-            try:
-                report(source, event, company_id, matches)
-            except httpx.HTTPError as error:
-                log.error(
-                    "%s: could not report %s for company %s: %s",
-                    source.name,
-                    event.external_id,
-                    company_id,
-                    error,
-                )
+            if not _try_report(source, event, company_id, matches):
                 ok = False
     return ok
 
 
+def _try_report(
+    source: Source,
+    event: SourceEvent,
+    company_id: str,
+    matches: list[MatchedDependency],
+    backfill: bool = False,
+) -> bool:
+    try:
+        report(source, event, company_id, matches, backfill)
+        return True
+    except httpx.HTTPError as error:
+        log.error(
+            "%s: could not report %s for company %s: %s",
+            source.name,
+            event.external_id,
+            company_id,
+            error,
+        )
+        return False
+
+
 def report(
-    source: Source, event: SourceEvent, company_id: str, matches: list[MatchedDependency]
+    source: Source,
+    event: SourceEvent,
+    company_id: str,
+    matches: list[MatchedDependency],
+    backfill: bool = False,
 ) -> None:
-    """Send one incident to the Core API, which notifies the company's teams if it is new."""
+    """Send one incident to the Core API, which notifies the company's teams of what's new."""
     is_new = core_api.create_incident(
         IncidentCreate(
             company_id=company_id,
@@ -75,6 +156,7 @@ def report(
             priority_hint=event.priority_hint,
             matched_dependencies=matches,
             details=event.details,
+            backfill=backfill,
         )
     )
     if is_new:

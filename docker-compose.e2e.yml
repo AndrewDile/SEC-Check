@@ -1,0 +1,24 @@
+# For the end-to-end tests (ingestion_worker/tests/test_e2e.py): the real worker and notifier,
+# reading fake feeds. The worker polls hourly, so what the tests see comes from its catch-up.
+services:
+  feed-mock:
+    build:
+      context: .
+      dockerfile: ingestion_worker/Dockerfile
+    command: ["python", "-m", "ingestion_worker.tests.mock_feeds"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8003/kev')"]
+      interval: 1s
+      retries: 30
+    networks: [ingest]
+
+  ingestion-worker:
+    environment:
+      KEV_URL: http://feed-mock:8003/kev
+      EDGAR_SEARCH_URL: http://feed-mock:8003/edgar
+      SEC_USER_AGENT: e2e-test
+      KEV_POLL_INTERVAL_S: 3600
+      EDGAR_POLL_INTERVAL_S: 3600
+    depends_on:
+      feed-mock:
+        condition: service_healthy

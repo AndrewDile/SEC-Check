@@ -17,5 +17,12 @@ LOOKBACK_DAYS = int(os.environ.get("LOOKBACK_DAYS", "30"))
 KEV_POLL_INTERVAL_S = int(os.environ.get("KEV_POLL_INTERVAL_S", "3600"))
 EDGAR_POLL_INTERVAL_S = int(os.environ.get("EDGAR_POLL_INTERVAL_S", "900"))
 
+# The feeds themselves. Only the end-to-end tests change these.
+KEV_URL = os.environ.get(
+    "KEV_URL",
+    "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+)
+EDGAR_SEARCH_URL = os.environ.get("EDGAR_SEARCH_URL", "https://efts.sec.gov/LATEST/search-index")
+
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8002"))

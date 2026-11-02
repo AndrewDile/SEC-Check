@@ -13,8 +13,6 @@ import httpx
 from ingestion_worker import config
 from ingestion_worker.sources.base import Source, SourceEvent
 
-SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
-
 # Material incidents are reported under Item 1.05. Since May 2024 the SEC has asked
 # companies to report incidents they have not (yet) found material under Item 8.01,
 # and those filings usually say "cybersecurity incident" rather than "Item 1.05".
@@ -50,7 +48,7 @@ def _search(since: datetime) -> list[dict]:
     # One request at a time keeps us far below the SEC's limit of 10 requests per second.
     while True:
         response = httpx.get(
-            SEARCH_URL,
+            config.EDGAR_SEARCH_URL,
             params={**params, "from": len(hits)},
             headers={"User-Agent": config.SEC_USER_AGENT},
             timeout=30,

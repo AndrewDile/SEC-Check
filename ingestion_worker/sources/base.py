@@ -34,6 +34,8 @@ class Source(ABC):
 
     name: SourceName
     poll_interval_s: int
+    # Whether a new dependency is checked against the source's whole history, not just the lookback
+    full_history: bool = False
 
     @abstractmethod
     def fetch(self, since: datetime) -> list[SourceEvent]:
