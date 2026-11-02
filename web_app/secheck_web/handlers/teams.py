@@ -1,7 +1,7 @@
 """Teams (Web App API 4.16 plus team management), session, health and dev-only helpers.
 
-Teams live in the Core API (/teams). Who belongs to which team is kept by
-ctx.memberships (membership.py): the Web App for now, the database later.
+Teams and their members are stored by the Core API (/teams, and /users for each user's
+teams); ctx.memberships (membership.py) reads and changes the members.
 """
 
 from __future__ import annotations
@@ -22,17 +22,12 @@ def _visible_users(ctx: Context) -> List[str]:
     return [name for name in ctx.settings.users if name not in hidden]
 
 
-def _user_teams_or_stored(ctx: Context, user: str) -> List[str]:
-    """The user's teams; if the Core API can't be asked which teams exist, the stored list."""
+def _user_teams_or_none(ctx: Context, user: str) -> List[str]:
+    """The user's teams, or none if the Core API can't be reached (so sign-in still loads)."""
     try:
         return ctx.user_teams(user)
     except WebAppError:
-        return ctx.memberships.teams_of(user)
-
-
-def _require_team(ctx: Context, team: str) -> None:
-    if team not in ctx.teams():
-        raise WebAppError("TEAM_DNE", f"Team {team} does not exist.")
+        return []
 
 
 def _require_user(ctx: Context, user: str) -> None:
@@ -69,11 +64,12 @@ def create_team(ctx: Context, req: Request):
     return 201, {"Team_Name": out.get("Team_Name", name), "Members": [], "Status": "Created"}
 
 
-@extension("DELETE", "/teams/{Team_Name}", note="Remove a team (Core /teams REMOVE)")
+@extension(
+    "DELETE", "/teams/{Team_Name}", note="Remove a team and its members (Core /teams REMOVE)"
+)
 def remove_team(ctx: Context, req: Request) -> Dict[str, Any]:
     name = req.path_params["Team_Name"]
     ctx.core.team_remove(None, name)
-    ctx.memberships.drop_team(name)
     return {"Team_Name": name, "Status": "Removed"}
 
 
@@ -83,9 +79,8 @@ def add_member(ctx: Context, req: Request) -> Dict[str, Any]:
     user = req.json.get("User") if isinstance(req.json, dict) else None
     if not isinstance(user, str) or not user:
         raise invalid("User is required.")
-    _require_team(ctx, team)
     _require_user(ctx, user)
-    if user in ctx.memberships.members_of(team):
+    if user in ctx.memberships.members_of(team):  # members_of raises TEAM_DNE
         raise invalid(f"{user} is already a member of {team}.")
     ctx.memberships.add(team, user)
     return {
@@ -101,9 +96,8 @@ def add_member(ctx: Context, req: Request) -> Dict[str, Any]:
 )
 def remove_member(ctx: Context, req: Request) -> Dict[str, Any]:
     team, user = req.path_params["Team_Name"], req.path_params["User"]
-    _require_team(ctx, team)
     _require_user(ctx, user)
-    if user not in ctx.memberships.members_of(team):
+    if user not in ctx.memberships.members_of(team):  # members_of raises TEAM_DNE
         raise invalid(f"{user} is not a member of {team}.")
     ctx.memberships.remove(team, user)
     return {
@@ -118,7 +112,6 @@ def remove_member(ctx: Context, req: Request) -> Dict[str, Any]:
     "GET", "/session", note="Who is signed in, their teams, and whether they may record decisions"
 )
 def session(ctx: Context, req: Request) -> Dict[str, Any]:
-    req.user.teams = _user_teams_or_stored(ctx, req.user.name)
     return {"User": req.user.name, "Teams": req.user.teams, "Can_Decide": can_decide(ctx, req.user)}
 
 
@@ -130,23 +123,9 @@ def dev_users(ctx: Context, req: Request) -> Dict[str, Any]:
         raise WebAppError("NOT_FOUND", "Not available.")
     return {
         "Users": [
-            {"User": name, "Teams": _user_teams_or_stored(ctx, name)}
-            for name in _visible_users(ctx)
+            {"User": name, "Teams": _user_teams_or_none(ctx, name)} for name in _visible_users(ctx)
         ]
     }
-
-
-@extension(
-    "POST",
-    "/dev/reset-memberships",
-    auth=False,
-    note="Development only: put team memberships back to the users' starting teams",
-)
-def dev_reset_memberships(ctx: Context, req: Request) -> Dict[str, Any]:
-    if ctx.settings.auth_mode != "dev":
-        raise WebAppError("NOT_FOUND", "Not available.")
-    ctx.memberships.reset()
-    return {"Status": "Memberships reset"}
 
 
 @extension("GET", "/health", auth=False, note="Liveness plus whether the Core API answers")

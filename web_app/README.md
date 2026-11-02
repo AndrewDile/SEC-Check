@@ -57,9 +57,7 @@ Useful URLs:
 | `host` / `port` | `SECHECK_HOST` / `SECHECK_PORT` | `127.0.0.1` / `8000` (container: `0.0.0.0` / `8000`) |
 | `core_api_url` | `CORE_API_URL` | `http://127.0.0.1:3001` (container: `http://api:3001`) |
 | `core_timeout_seconds` | `CORE_TIMEOUT_SECONDS` | `10` |
-| `users` | `SECHECK_USERS` (JSON object) | 4 sample users + `core-gateway`, with the teams each starts in |
-| `membership_source` | `SECHECK_MEMBERSHIP_SOURCE` | `local` (see Teams below) |
-| `membership_file` | `SECHECK_MEMBERSHIP_FILE` | `data/memberships.json` (container: the `web-data` volume) |
+| `users` | `SECHECK_USERS` (JSON list) | 4 sample users + `core-gateway` (their teams come from the Core API) |
 | `teams` | `SECHECK_TEAMS` | No longer used: teams come from the Core API |
 | `hidden_users` | n/a | `["core-gateway"]`: service accounts left out of the sign-in picker |
 | `decision_teams` | `SECHECK_DECISION_TEAMS` (JSON list) | `[]` = any signed-in user may record decisions |
@@ -75,21 +73,21 @@ The **Teams** page creates and removes teams and adds or removes members.
 - **Teams** live in the Core API (`/teams`): the web app reads them with `LIST` and creates or
   removes them with `NEW`/`REMOVE`. Tickets, notifications, claims and queues accept only
   existing teams. A team that tickets use can't be removed.
-- **Members** aren't stored in the database yet, so the web app keeps them
-  (`secheck_web/membership.py`, `LocalMembershipStore`): seeded from each user's teams in
-  `settings.json`, then saved to `membership_file`. When the database stores members, set
-  `membership_source` to `core`; `CoreMembershipStore` then uses `/teams` `ADD_USER`,
-  `REMOVE_USER` and `GET` (with `Members`), and nothing else needs to change.
+- **Members** are stored in the database too (`secheck_web/membership.py`): the web app adds and
+  removes them with `/teams` `ADD_USER`/`REMOVE_USER`, reads a team's with `/teams` `GET`
+  (`Members`), and reads each user's teams with `/users` `GET`/`LIST` (`Teams`). The Core API's
+  `/reset` puts back the default memberships.
+- **Users:** the sign-in list is still `users` in `settings.json`. Each one must also exist in
+  the Core API database (the defaults do), since the Core API rejects an unknown `X-User`.
 - **Extension routes:** `GET /team-members`, `POST /teams`, `DELETE /teams/{Team_Name}`,
-  `POST /teams/{Team_Name}/members`, `DELETE /teams/{Team_Name}/members/{User}`, and (dev only)
-  `POST /dev/reset-memberships`.
+  `POST /teams/{Team_Name}/members` and `DELETE /teams/{Team_Name}/members/{User}`.
 
 ## Layout
 
 ```
 web_app/
   Dockerfile, .dockerignore     container build
-  config/settings.json          ports, Core URL, dev users and their starting teams, who may decide
+  config/settings.json          ports, Core URL, dev sign-in users, who may decide
   contracts/webapp_api.*        Web App OpenAPI contract the server runs on (generated; don't hand-edit)
   secheck_web/
     __main__.py                 entry point: python -m secheck_web

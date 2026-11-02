@@ -26,18 +26,15 @@ class Settings:
     core_use_system_proxy: bool = False
     # No longer used: teams come from the Core API (/teams LIST). Kept so old settings files load.
     teams: List[str] = field(default_factory=list)
-    # Development users and the teams each starts in (team membership is seeded from this).
-    users: Dict[str, List[str]] = field(default_factory=dict)
+    # Development sign-in users. Their teams come from the Core API database. An object
+    # ({"user": [teams]}) from an older settings file is accepted; only the names are used.
+    users: List[str] = field(default_factory=list)
     hidden_users: List[str] = field(
         default_factory=list
     )  # service accounts, not shown in the sign-in picker
     decision_teams: List[str] = field(default_factory=list)
     auth_mode: str = "dev"
     log_requests: bool = True
-    # Where team membership is kept: "local" (a JSON file the Web App writes) until the
-    # database stores members, then "core" (the Core API /teams path). See membership.py.
-    membership_source: str = "local"
-    membership_file: Path = WEB_APP_DIR / "data" / "memberships.json"
     webapp_contract: Path = WEB_APP_DIR / "contracts" / "webapp_api.json"
     static_dir: Path = WEB_APP_DIR / "secheck_web" / "static"
 
@@ -53,8 +50,6 @@ class Settings:
         "SECHECK_DECISION_TEAMS": "decision_teams",
         "SECHECK_AUTH_MODE": "auth_mode",
         "SECHECK_LOG_REQUESTS": "log_requests",
-        "SECHECK_MEMBERSHIP_SOURCE": "membership_source",
-        "SECHECK_MEMBERSHIP_FILE": "membership_file",
     }
 
 
@@ -85,6 +80,7 @@ def load_settings(path: Optional[Path] = None, settings_cls: Type[S] = Settings,
             data[key] = Path(value) if Path(value).is_absolute() else base / value
 
     settings = settings_cls(**data)
+    settings.users = list(settings.users)  # an object's keys, from older settings files
     settings.port = int(settings.port)
     settings.core_timeout_seconds = float(settings.core_timeout_seconds)
     settings.core_api_url = settings.core_api_url.rstrip("/")
