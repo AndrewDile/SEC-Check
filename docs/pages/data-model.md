@@ -145,7 +145,8 @@ re-hashes a scope's chain and reports the first broken `seq`; no endpoint calls 
 
 The ingestion worker and notification service each define the payloads they exchange with the
 Core API in their own `core_api.openapi.yaml`. Their Pydantic models (`models.py`) are generated
-from it by `generate_models.sh`, so don't edit `models.py` by hand. The main shapes are:
+from it by `generate_models.sh`, so don't edit `models.py` by hand: `./verify.sh` fails if it
+doesn't match its spec, and `./verify.sh --fix generated` regenerates it. The main shapes are:
 
 | Schema | Fields | Meaning |
 |---|---|---|

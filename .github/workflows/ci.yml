@@ -1,4 +1,4 @@
-# Lint, format and test every push and PR; deploy main to EC2 only once all three pass.
+# Lint, format, verify and test every push and PR; deploy main to EC2 only once all four pass.
 # Deploying needs repo secrets DEPLOY_HOST (user@host) and DEPLOY_SSH_KEY (the private key's
 # contents), and port 22 open to the internet.
 name: CI
@@ -42,8 +42,19 @@ jobs:
         working-directory: api
       - run: ./format.sh --check
 
+  # Check the repo against architecture/model.yaml, after the checks' own tests
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.10.7
+      - run: uv run --no-project --with pyyaml==6.0.2 python -m unittest discover -s architecture/tests -t .
+      - run: ./verify.sh
+
   test:
-    needs: [lint, format]
+    needs: [lint, format, verify]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

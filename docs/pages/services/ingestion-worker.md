@@ -57,7 +57,7 @@ Each source builds its events like this:
 
 To add a source, subclass `Source` in `sources/base.py` and add it to `ALL_SOURCES`. Its name
 must also be added to `SourceName` in **both** services' `core_api.openapi.yaml`; then run each
-service's `generate_models.sh`.
+service's `generate_models.sh` (`./verify.sh --fix generated` runs both).
 
 ## Matching (`matching.py`)
 

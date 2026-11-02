@@ -1,0 +1,45 @@
+# The system model: what the system is made of and how it fits together. It is the source of
+# truth for the repo's config; ./verify.sh fails wherever the repo disagrees with it, and lists
+# its checks with --list. Change this file first, then the config (docs/pages/verification.md).
+#
+# Docker networks can't tell who opens a connection, so the network checks treat each connection
+# as "these two containers can reach each other". The direction and "why" are for people.
+
+services:
+  caddy: { port: 80, published: ["80:80"] }   # the only public port
+  web_app: { port: 8000 }
+  api: { port: 3001 }
+  tester: { port: 8100 }
+  logs: { port: 8080 }
+  docs: { port: 80 }
+  db: { port: 3306, published: ["127.0.0.1:3306:3306"] }   # local tools only
+  ingestion-worker: { port: 8002 }
+  notification-service: { port: 8001 }
+
+connections:
+  # Caddy routes (Caddyfile)
+  - { from: caddy, to: web_app, why: "every path not listed below" }
+  - { from: caddy, to: api, why: "/system/*" }
+  - { from: caddy, to: tester, why: "/tester/*" }
+  - { from: caddy, to: logs, why: "/logs*, behind basic_auth" }
+  - { from: caddy, to: docs, why: "/docs/*" }
+
+  - { from: web_app, to: api, why: "Core API calls; no credentials" }
+  - { from: tester, to: caddy, why: "runs tests against target_url (http://caddy/system in CI)" }
+  - { from: api, to: db, why: "MySQL" }
+
+  - { from: ingestion-worker, to: api, why: "/ingest/*, INGEST_CORE_API_TOKEN" }
+  - { from: api, to: ingestion-worker, why: "dependency sync, INGEST_INBOUND_TOKEN" }
+  - { from: notification-service, to: api, why: "/notif/*, NOTIF_CORE_API_TOKEN" }
+  - { from: api, to: notification-service, why: "POST /notifications, NOTIF_INBOUND_TOKEN" }
+
+# Files a tool writes, which nobody edits by hand. Each command takes the output path as its first
+# argument, defaulting to the file: the check writes to a temporary path and compares, and
+# ./verify.sh --fix runs it on the file itself.
+generated:
+  - file: ingestion_worker/models.py
+    from: [ingestion_worker/core_api.openapi.yaml]
+    command: ingestion_worker/generate_models.sh
+  - file: notification_service/models.py
+    from: [notification_service/core_api.openapi.yaml]
+    command: notification_service/generate_models.sh

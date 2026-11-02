@@ -41,10 +41,13 @@ timings for the run (see [Core API](services/core-api.md#cross-team-testing-endp
 flowchart LR
     lint --> test
     format --> test
+    verify --> test
     test --> deploy["deploy (main only)"]
 ```
 
 - **lint:** runs `./lint.sh`: ruff for the Python services; `tsc` and Biome for the API.
+- **verify:** runs the [verification checks](verification.md)' own tests (`architecture/tests/`),
+  then `./verify.sh`.
 - **format:** runs `./format.sh --check`.
 - **test:** copies `.env.example` to `.env` (throwaway secrets for a throwaway stack) and runs
   `./test.sh`. If it fails, it prints `docker compose logs`.
