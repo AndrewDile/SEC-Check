@@ -42,9 +42,12 @@ Every deploy recreates every container. That causes:
 
 The database volume is kept.
 
-**Schema changes** aren't applied automatically. The migrations run only when the `db-data`
-volume is first created, so a change to the schema has to be applied to the server's database
-by hand.
+**Schema changes** are applied by the Core API when it starts: it runs each
+`db/migrations/*.sql` not yet in `schema_migrations`, in name order. A database made before the
+runner existed is taken to have `001_initial.sql` already. MySQL runs with `--disable-log-bin`,
+because with binary logging only `SUPER` can create the migrations' triggers. A migration that
+fails partway stops the Core API from starting, and MySQL can't roll back schema changes, so fix
+the database by hand before restarting.
 
 ## Log viewer
 
@@ -72,7 +75,7 @@ After changing them, run `sudo docker compose up -d caddy`.
 
 | Service | Logs |
 |---|---|
-| Core API | Startup; unexpected errors (with stack); outbound calls that failed 5 times. No request log |
+| Core API | Startup and migrations; one JSON line per request (operation, status, time, session, user); unexpected errors (with stack); outbound calls that failed 5 times; purged test sessions |
 | Web app | One line per request (`log_requests`); startup summary |
 | Ingestion worker | Events per poll, new incidents, failures (Python `logging`, timestamped) |
 | Notification service | Every message sent through the `log` channel, retries, delivery summary |
