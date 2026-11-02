@@ -2,7 +2,8 @@
 
 T-01..T-40 are the original tester suite. T-41..T-54 are ported from the Web
 App team's mock-Core test suite ("Web Dev/tests"): the checks from it that a
-client can observe through the Core API alone.
+client can observe through the Core API alone. T-55..T-70 cover the /teams and
+/users paths (creating teams and users, memberships, and using new teams on tickets).
 
 Each test is a function taking a Context. It sends Core API calls with
 ctx.call(...) and checks them with the judge helpers; finishing without an
@@ -156,6 +157,32 @@ class Context:
 
     def dependency(self, method: str, name: str) -> Reply:
         return self.call("dependencies", {"dp_name": name, "method": method})
+
+    def team(self, method: str, name: Optional[str] = None, **extra) -> Reply:
+        body: Dict[str, Any] = {"Method": method}
+        if name is not None:
+            body["Team_Name"] = name
+        body.update(extra)
+        return self.call("teams", body)
+
+    def user(self, method: str, name: Optional[str] = None, **extra) -> Reply:
+        body: Dict[str, Any] = {"Method": method}
+        if name is not None:
+            body["Username"] = name
+        body.update(extra)
+        return self.call("users", body)
+
+    def team_name(self, key: str) -> str:
+        """A fresh team name per key and run, e.g. 'Tester team 1a2b3c4d'."""
+        return self._name("team:" + key, "Tester team %s")
+
+    def username(self, key: str) -> str:
+        return self._name("user:" + key, "tester-%s")
+
+    def _name(self, key: str, pattern: str) -> str:
+        if key not in self.ids:
+            self.ids[key] = pattern % secrets.token_hex(4)
+        return self.ids[key]
 
 
 # Values the tests create and later check.
@@ -756,6 +783,187 @@ def t54(ctx: Context):
         if not isinstance(body.get("Message"), str) or not body["Message"].strip():
             raise Fail("/%s: error has no Message text: %r." % (path, body))
     return "All three errors have Error from Error_type and a Message."
+
+
+# ====================================================================== teams and users (AC-04, AC-02)
+AUTH_HASH = "tester-credential-not-a-real-secret"
+
+
+def team_members(ctx: Context, team: str) -> List[str]:
+    """GET a team and return its Members list."""
+    body = expect_ok(ctx.team("GET", team), "Team Received")
+    members = field(body, "Members")
+    if not isinstance(members, list):
+        raise Fail("/teams GET: Members should be a list of usernames, got %r." % (members,))
+    return members
+
+
+@test("T-55", "List the teams (LIST)", ("AC-04",))
+def t55(ctx: Context):
+    body = expect_ok(ctx.team("LIST"), "Teams Listed")
+    teams = field(body, "Team_List")
+    if not isinstance(teams, list):
+        raise Fail("/teams LIST: Team_List should be a list, got %r." % (teams,))
+    missing = [t for t in ctx.teams if t not in teams]
+    if missing:
+        raise Fail(
+            "/teams LIST: Team_List %r is missing the default team(s) %s." % (teams, missing)
+        )
+    return "Team_List has %d teams, including %s." % (len(teams), ", ".join(ctx.teams))
+
+
+@test("T-56", "Create a team (NEW)", ("AC-04",))
+def t56(ctx: Context):
+    name = ctx.team_name("main")
+    body = expect_ok(ctx.team("NEW", name), "Created")
+    expect_field(body, "Team_Name", name)
+    return "Created team %r." % name
+
+
+@test("T-57", "A created team is listed and has no members", ("AC-04",), after=("T-56",), db=True)
+def t57(ctx: Context):
+    name = ctx.team_name("main")
+    teams = field(expect_ok(ctx.team("LIST"), "Teams Listed"), "Team_List")
+    if not isinstance(teams, list) or name not in teams:
+        raise Fail("/teams LIST: the new team %r is not in Team_List %r." % (name, teams))
+    members = team_members(ctx, name)
+    if members:
+        raise Fail("A new team should have no members, got %r." % (members,))
+    return "%r is listed and empty." % name
+
+
+@test("T-58", "Reject a duplicate team", ("AC-04",), after=("T-56",))
+def t58(ctx: Context):
+    expect_error(ctx.team("NEW", ctx.team_name("main")), "TEAM_EXISTS")
+    expect_error(ctx.team("NEW", ctx.teams[0]), "TEAM_EXISTS")
+    return "NEW with an existing name rejected with TEAM_EXISTS."
+
+
+@test("T-59", "Reject GET and REMOVE of an unknown team", ("AC-04",))
+def t59(ctx: Context):
+    name = ctx.team_name("never-created")
+    expect_error(ctx.team("GET", name), "TEAM_DNE")
+    expect_error(ctx.team("REMOVE", name), "TEAM_DNE")
+    return "Unknown team rejected with TEAM_DNE."
+
+
+@test("T-60", "Reject invalid /teams requests", ("AC-04",))
+def t60(ctx: Context):
+    expect_error(ctx.team("NEW"), "INVALID_DATA")  # no Team_Name
+    expect_error(ctx.team("NEW", ""), "INVALID_DATA")
+    expect_error(ctx.team("NEW", 42), "INVALID_DATA")
+    expect_error(ctx.team("RENAME", ctx.team_name("invalid")), "INVALID_DATA")
+    return "Missing, empty and non-string Team_Name and an unknown Method rejected."
+
+
+@test("T-61", "Create a user (/users NEW)", ("AC-02",))
+def t61(ctx: Context):
+    name = ctx.username("main")
+    body = expect_ok(ctx.user("NEW", name, Auth_Hash=AUTH_HASH), "Created")
+    expect_field(body, "Username", name)
+    if "Auth_Hash" in body:
+        raise Fail("/users NEW returned the Auth_Hash; it should never be sent back.")
+    return "Created user %r." % name
+
+
+@test("T-62", "Reject a duplicate user and a user without Auth_Hash", ("AC-02",), after=("T-61",))
+def t62(ctx: Context):
+    expect_error(ctx.user("NEW", ctx.username("main"), Auth_Hash=AUTH_HASH), "USER_EXISTS")
+    expect_error(ctx.user("NEW", ctx.username("no-hash")), "INVALID_DATA")
+    expect_error(ctx.user("NEW", Auth_Hash=AUTH_HASH), "INVALID_DATA")  # no Username
+    return (
+        "Duplicate user rejected with USER_EXISTS; missing Auth_Hash or Username with INVALID_DATA."
+    )
+
+
+@test("T-63", "Add a user to a team (ADD_USER)", ("AC-04",), after=("T-56", "T-61"))
+def t63(ctx: Context):
+    team, user = ctx.team_name("main"), ctx.username("main")
+    body = expect_ok(ctx.team("ADD_USER", team, Username=user), "User added")
+    expect_field(body, "Team_Name", team)
+    return "Added %s to %r." % (user, team)
+
+
+@test("T-64", "A team's members are stored", ("AC-04",), after=("T-63",), db=True)
+def t64(ctx: Context):
+    team, user = ctx.team_name("main"), ctx.username("main")
+    members = team_members(ctx, team)
+    if members != [user]:
+        raise Fail("Members of %r are %r; expected [%r]." % (team, members, user))
+    return "GET %r lists %s." % (team, user)
+
+
+@test("T-65", "Reject invalid membership changes", ("AC-04",), after=("T-63",))
+def t65(ctx: Context):
+    team, user = ctx.team_name("main"), ctx.username("main")
+    expect_error(ctx.team("ADD_USER", team, Username=user), "USER_EXISTS")
+    expect_error(ctx.team("ADD_USER", team, Username=ctx.username("never-created")), "USER_DNE")
+    expect_error(ctx.team("ADD_USER", ctx.team_name("never-created"), Username=user), "TEAM_DNE")
+    expect_error(ctx.team("ADD_USER", team), "INVALID_DATA")  # no Username
+    return "Duplicate, unknown user, unknown team and missing Username rejected."
+
+
+@test("T-66", "A new team can be assigned, notified and claim", ("AC-04",), after=("T-56", "T-01"))
+def t66(ctx: Context):
+    a, team = ctx.iid("A"), ctx.team_name("main")
+    body = expect_ok(
+        ctx.ticket("NEW", a, "Tester: work for the new team", Team_list=[team]), "Logged"
+    )
+    number = new_ticket_number(ctx, body, a)
+    ctx.state["team_ticket"] = number
+    expect_field(expect_ok(ctx.get_ticket(a, number), "Displayed"), "Team_List", [team])
+    expect_ok(ctx.notifier("NOTIFY", [team], number), "Notified team")
+    expect_ok(ctx.notifier("CLAIM", [team], number), "Claimed ticket")
+    return "Ticket %s assigned to, notified to and claimed by %r." % (number, team)
+
+
+@test("T-67", "A team that tickets use can't be removed", ("AC-04",), after=("T-66",))
+def t67(ctx: Context):
+    team = ctx.team_name("main")
+    expect_error(ctx.team("REMOVE", team), "INVALID_DATA")
+    expect_ok(ctx.team("GET", team), "Team Received")
+    return "REMOVE of %r rejected; the team is still there." % team
+
+
+@test("T-68", "Remove a user from a team (REMOVE_USER)", ("AC-04",), after=("T-64",), db=True)
+def t68(ctx: Context):
+    team, user = ctx.team_name("main"), ctx.username("main")
+    expect_ok(ctx.team("REMOVE_USER", team, Username=user), "User removed")
+    members = team_members(ctx, team)
+    if user in members:
+        raise Fail("%s is still a member of %r after REMOVE_USER: %r." % (user, team, members))
+    expect_error(ctx.team("REMOVE_USER", team, Username=user), "USER_DNE")
+    return "Removed %s from %r; removing again is USER_DNE." % (user, team)
+
+
+@test("T-69", "Remove an unused team and its members", ("AC-04",), after=("T-61", "T-01"), db=True)
+def t69(ctx: Context):
+    team, user = ctx.team_name("spare"), ctx.username("main")
+    expect_ok(ctx.team("NEW", team), "Created")
+    expect_ok(ctx.team("ADD_USER", team, Username=user), "User added")
+    body = expect_ok(ctx.team("REMOVE", team), "Removed")
+    expect_field(body, "Team_Name", team)
+    expect_error(ctx.team("GET", team), "TEAM_DNE")
+    teams = field(expect_ok(ctx.team("LIST"), "Teams Listed"), "Team_List")
+    if isinstance(teams, list) and team in teams:
+        raise Fail("/teams LIST still has the removed team %r." % team)
+    expect_error(
+        ctx.ticket("NEW", ctx.iid("A"), "Tester: removed team", Team_list=[team]), "INVALID_DATA"
+    )
+    expect_ok(ctx.team("NEW", team), "Created")  # the name can be used again, with no members
+    if team_members(ctx, team):
+        raise Fail("A re-created team kept the members of the removed one.")
+    return "Removed %r; it's gone, can't be assigned, and comes back empty." % team
+
+
+@test("T-70", "Remove a user (/users REMOVE)", ("AC-02",), after=("T-61",))
+def t70(ctx: Context):
+    user = ctx.username("main")
+    body = expect_ok(ctx.user("REMOVE", user), "Removed")
+    expect_field(body, "Username", user)
+    expect_error(ctx.user("REMOVE", user), "USER_DNE")
+    expect_error(ctx.team("ADD_USER", ctx.teams[0], Username=user), "USER_DNE")
+    return "Removed %s; removing again or adding them to a team is USER_DNE." % user
 
 
 ALL_IDS = [t.test_id for t in SUITE]

@@ -1,4 +1,5 @@
-"""Checks for the tests ported from the Web App suite (T-41..T-54) and for tester behaviour
+"""Checks for the tests ported from the Web App suite (T-41..T-54), the /teams and /users tests
+(T-55..T-70), and for tester behaviour
 not covered by test_tester.py: shared state, unreachable targets, tester bugs, coverage parsing.
 
     python -m unittest discover -s tests -v
@@ -49,7 +50,7 @@ def run_against(bug="none", **overrides):
 class PortedTests(unittest.TestCase):
     def test_suite_has_the_ported_tests_in_order(self):
         ids = [t.test_id for t in SUITE]
-        self.assertEqual(ids, ["T-%02d" % n for n in range(1, 55)])
+        self.assertEqual(ids, ["T-%02d" % n for n in range(1, 71)])
         for t in SUITE:
             self.assertTrue(set(t.criteria) <= set(coverage.CRITERIA), t.test_id)
 
@@ -86,6 +87,46 @@ class PortedTests(unittest.TestCase):
         _, _, r = run_against("crash-logs")
         self.assertEqual(r["T-49"]["outcome"], "skip")  # needs T-23
         self.assertEqual((r["T-25"]["outcome"], r["T-25"]["source"]), ("error", "system"))
+
+
+TEAMS_AND_USERS = ["T-%02d" % n for n in range(55, 71)]
+
+
+class TeamsAndUsers(unittest.TestCase):
+    def test_team_and_user_tests_pass_against_reference_system(self):
+        _, _, r = run_against()
+        self.assertEqual(
+            {tid: r[tid]["outcome"] for tid in TEAMS_AND_USERS},
+            {tid: "pass" for tid in TEAMS_AND_USERS},
+        )
+
+    def test_members_not_stored_is_caught(self):
+        _, _, r = run_against("members-not-stored")
+        self.assertEqual(r["T-63"]["outcome"], "pass")  # ADD_USER itself answers correctly
+        self.assertEqual(r["T-64"]["outcome"], "fail")
+        self.assertIn("Members", r["T-64"]["message"])
+        self.assertEqual(r["T-68"]["outcome"], "skip")  # needs T-64
+
+    def test_removing_a_used_team_is_caught(self):
+        _, _, r = run_against("remove-used-team")
+        self.assertEqual(r["T-67"]["outcome"], "fail")
+        self.assertIn("accepted", r["T-67"]["message"])
+        self.assertEqual(r["T-69"]["outcome"], "pass")  # unused teams can still be removed
+
+    def test_wrong_status_strings_fail_team_and_user_checks(self):
+        _, _, r = run_against("wrong-status")
+        for tid in ("T-55", "T-56", "T-61"):
+            self.assertEqual(r[tid]["outcome"], "fail", tid)
+        self.assertEqual(r["T-59"]["outcome"], "pass")  # expected errors still pass
+
+    def test_system_without_teams_and_users_paths(self):
+        """A system that doesn't implement /teams and /users fails those tests, nothing else."""
+        _, _, r = run_against("no-teams-users")
+        self.assertEqual(r["T-55"]["outcome"], "fail")
+        self.assertTrue(all(r[t]["outcome"] in ("fail", "skip") for t in TEAMS_AND_USERS))
+        self.assertEqual(
+            [t for t, v in r.items() if v["outcome"] != "pass" and t not in TEAMS_AND_USERS], []
+        )
 
 
 class TesterBehaviour(unittest.TestCase):
@@ -230,8 +271,8 @@ class TesterBehaviour(unittest.TestCase):
             timeout=30,
         )
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("T-54", out.stdout)
-        self.assertIn("54 tests", out.stdout)
+        self.assertIn("T-70", out.stdout)
+        self.assertIn("70 tests", out.stdout)
 
 
 if __name__ == "__main__":
