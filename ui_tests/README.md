@@ -5,8 +5,8 @@ real browser (Playwright), pick a user, fill in forms and click buttons, then
 check both what the page shows and what the Core API stored.
 
 They run against the Docker stack and **wipe its database before every test**
-(through the Core API's `/reset`). They also put team memberships back to the
-users' starting teams (the Web App's `/dev/reset-memberships`).
+(through the Core API's `/reset`, which also puts back the default teams and
+memberships).
 
 ## Set up once
 
@@ -86,7 +86,7 @@ Two checklist items still need a person:
 ## Writing more tests
 
 * Subclass `UITestCase` from `ui_base.py`. Each test starts signed in as
-  `alice` (CYBER1) on an empty database with the starting team memberships; set `user = "bob"` on the class, or
+  `alice` (CYBER1) on an empty database with the default team memberships; set `user = "bob"` on the class, or
   call `self.sign_in("bob")` mid-test. Users come from
   `web_app/config/settings.json`.
 * Find elements with `self.tid("<data-testid>")`. The attributes are in

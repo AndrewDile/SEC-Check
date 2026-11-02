@@ -102,18 +102,6 @@ def now() -> str:
     return (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def reset_memberships() -> None:
-    """Team memberships are kept by the Web App for now; put them back to the users' starting teams."""
-    req = urllib.request.Request(
-        WEB_URL + "/webapp/v1/dev/reset-memberships",
-        data=b"{}",
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=15):
-        pass
-
-
 def _check_targets() -> None:
     for name, url in (("WEB_URL", WEB_URL), ("CORE_URL", CORE_URL)):
         host = urllib.parse.urlsplit(url).hostname
@@ -154,8 +142,7 @@ class UITestCase(unittest.TestCase):
         cls._pw.stop()
 
     def setUp(self):
-        self.core.reset()
-        reset_memberships()
+        self.core.reset()  # also puts back the default teams and memberships
         self.context = self._browser.new_context(base_url=WEB_URL)
         self.context.set_default_timeout(TIMEOUT_MS)
         self.context.tracing.start(screenshots=True, snapshots=True, sources=True)

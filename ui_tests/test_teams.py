@@ -1,7 +1,7 @@
 """Creating teams and managing their members (Teams page), and using new teams elsewhere.
 
-Teams are stored by the Core API (/teams). Memberships are kept by the Web App for now
-(membership.py); every test starts from the users' starting teams.
+Teams and their members are stored by the Core API database (/teams). Every test starts
+from the default teams and memberships, which the Core API's /reset puts back.
 """
 
 import json
@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 
 from playwright.sync_api import expect
-from ui_base import WEB_URL, Core, UITestCase, reset_memberships
+from ui_base import WEB_URL, Core, UITestCase
 
 
 def web(method, path, body=None, user="alice"):
@@ -212,7 +212,6 @@ class TeamMembershipRules(unittest.TestCase):
 
     def setUp(self):
         Core().reset()
-        reset_memberships()
 
     def test_create_and_list(self):
         status, body = web("POST", "/teams", {"Team_Name": "Audit"})
