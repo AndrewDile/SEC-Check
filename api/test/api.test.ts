@@ -271,6 +271,65 @@ describe.skipIf(!API)('Core API pod contract', () => {
     });
   });
 
+  describe('Incident_IDs with underscores', () => {
+    const UID = 'INC_2026_001';
+    const ticket = (method: string, number: string, extra = {}, id = UID) =>
+      post('/tickets', { Incident_ID: id, Method: method, Timestamp: TS, Ticket_number: number, ...extra });
+
+    it('stores and fetches the incident, its tickets and its log', async () => {
+      expect((await newIncident(UID)).body).toMatchObject({ Incident_ID: UID, Status: 'Created' });
+      expect((await getIncident(UID)).body).toMatchObject({ Incident_ID: UID, Status: 'Data Fetched' });
+      expect((await newTicket(UID)).body).toMatchObject({ Ticket_ID: `${UID}_1_1`, Status: 'Logged' });
+      expect((await ticket('EDIT', `${UID}_1`, { Description: 'v2' })).body.Ticket_ID).toBe(`${UID}_1_2`);
+      expect((await ticket('GET', `${UID}_1`)).body.Ticket_Description).toBe('v2');
+      expect((await ticket('GET', `${UID}_1_1`)).body.Ticket_Description).toBe('Initial triage.');
+      expect((await ticket('GET', '1')).body.Ticket_ID).toBe(`${UID}_1_2`);
+      const log = await post('/logs', { Incident_ID: UID, Timestamp: TS });
+      expect(log.body.Ticket_ID_List).toEqual([`${UID}_1_1`, `${UID}_1_2`]);
+    });
+
+    it('notifies and claims by the weak ticket number', async () => {
+      await newIncident(UID);
+      await newTicket(UID);
+      const notified = await post('/notifier', {
+        Team_Names: ['CYBER1'],
+        Method: 'NOTIFY',
+        Ticket_Number: `${UID}_1`,
+      });
+      expect(notified.body).toEqual({ UUID: UID, Ticket_Number: `${UID}_1`, Status: 'Notified team' });
+      const claimed = await post('/notifier', { Team_Names: ['CYBER1'], Method: 'CLAIM', Ticket_Number: `${UID}_1` });
+      expect(claimed.body.Status).toBe('Claimed ticket');
+      expect((await ticket('GET', `${UID}_1`)).body.Claimed_By).toBe('CYBER1');
+    });
+
+    it('keeps incidents A and A_1 apart', async () => {
+      await newIncident('A');
+      await newIncident('A_1');
+      await newTicket('A', { Description: 'ticket of A' });
+      await newTicket('A_1', { Description: 'ticket of A_1' });
+      // With Incident_ID given, A_1_1 is version 1 of ticket 1 of A
+      expect((await ticket('GET', 'A_1_1', {}, 'A')).body.Ticket_Description).toBe('ticket of A');
+      expect((await ticket('GET', 'A_1_1', {}, 'A_1')).body.Ticket_Description).toBe('ticket of A_1');
+      // /notifier reads A_1_1 as ticket 1 of A_1
+      const r = await post('/notifier', { Team_Names: ['LEGAL'], Method: 'NOTIFY', Ticket_Number: 'A_1_1' });
+      expect(r.body).toMatchObject({ UUID: 'A_1', Ticket_Number: 'A_1_1' });
+    });
+
+    it('still rejects a ticket number of another incident, and bad IDs', async () => {
+      await newIncident(UID);
+      await newTicket(UID);
+      expectError(await ticket('GET', 'OTHER_1'), 'INVALID_DATA');
+      expectError(await ticket('GET', `${UID}_x`), 'INVALID_DATA');
+      expectError(await newIncident(''), 'INVALID_DATA');
+      expectError(await newIncident('x'.repeat(65)), 'INVALID_DATA');
+      // no ticket number after the last '_'
+      expectError(
+        await post('/notifier', { Team_Names: ['LEGAL'], Method: 'NOTIFY', Ticket_Number: 'INC_x' }),
+        'INVALID_DATA',
+      );
+    });
+  });
+
   describe('/logs', () => {
     it('lists every ticket version in order (REQ-06)', async () => {
       await newIncident(undefined, { Materiality: 'MATERIAL' });

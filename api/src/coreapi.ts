@@ -83,25 +83,32 @@ function optionalText(value: unknown, field: string, max: number): string | unde
   return value;
 }
 
+// Any non-empty string of at most 64 characters, '_' included: ticket numbers are read from the right
+// (ticketRef, notifierTicket), since their ticket number and version are always digits.
 function incidentId(value: unknown): string {
-  if (typeof value !== 'string' || !value || value.includes('_') || value.length > 64)
-    invalid('Incident_ID is invalid.');
+  if (typeof value !== 'string' || !value || value.length > 64) invalid('Incident_ID is invalid.');
   return value;
 }
 
-// "<incident>_<ticket>" or "<incident>_<ticket>_<version>"; a bare number needs incident
-function ticketRef(value: unknown, incident?: string) {
-  const parts = String(value ?? '').split('_');
-  if (parts.length === 1 && incident) parts.unshift(incident);
-  const [id, number, version] = parts;
-  if (parts.length > 3 || !/^\d+$/.test(number ?? '') || (version !== undefined && !/^\d+$/.test(version)))
+// /tickets: "<incident>_<ticket>", "<incident>_<ticket>_<version>" or a bare ticket number, for the request's
+// Incident_ID. Reading it after that incident's own ID keeps it unambiguous when the ID contains '_'.
+function ticketRef(value: unknown, incident: string) {
+  const s = String(value ?? '');
+  const rest = /^\d+$/.test(s) ? s : s.startsWith(`${incident}_`) ? s.slice(incident.length + 1) : undefined;
+  if (rest === undefined) {
+    if (/_\d+(_\d+)?$/.test(s)) invalid('Ticket_number does not belong to Incident_ID.');
     invalid('Ticket_number is invalid.');
-  if (incident && id !== incident) invalid('Ticket_number does not belong to Incident_ID.');
-  return {
-    incidentId: incidentId(id),
-    ticketNumber: Number(number),
-    version: version === undefined ? undefined : Number(version),
-  };
+  }
+  const m = /^(\d+)(?:_(\d+))?$/.exec(rest);
+  if (!m) invalid('Ticket_number is invalid.');
+  return { ticketNumber: Number(m[1]), version: m[2] === undefined ? undefined : Number(m[2]) };
+}
+
+// /notifier: Ticket_Number is a weak ticket number, "<incident>_<ticket>"; the ticket is after the last '_'
+function notifierTicket(value: unknown) {
+  const m = /^(.+)_(\d+)$/.exec(String(value ?? ''));
+  if (!m) invalid('Ticket_Number is invalid.');
+  return { incidentId: incidentId(m[1]), ticketNumber: Number(m[2]) };
 }
 
 function teamList(value: unknown, field: string): string[] | undefined {
@@ -245,8 +252,7 @@ app.post('/notifier', async (req, res) => {
   const b = req.body ?? {};
   const teams = teamList(b.Team_Names, 'Team_Names');
   if (!teams?.length) invalid('Team_Names invalid data type');
-  const ref = ticketRef(b.Ticket_Number);
-  if (ref.version !== undefined) invalid('Ticket_Number must be a ticket number without a version.');
+  const ref = notifierTicket(b.Ticket_Number);
   await requireTeams(teams, 'Team_Names');
   let status: string;
   switch (b.Method) {

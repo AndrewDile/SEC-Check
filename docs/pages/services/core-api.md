@@ -46,7 +46,11 @@ worker and notifier call are in their `core_api.openapi.yaml` files, shown on th
     - Anything unexpected: 500 `INTERNAL_ERROR`, logged to stderr.
     - Under `/test/` errors use the tester's format instead: `{"message": "...", "source": "system"}`.
 - **Validation:**
-    - `Incident_ID`: non-empty, no `_`, at most 64 characters.
+    - `Incident_ID`: any non-empty string of at most 64 characters, `_` included.
+    - Ticket numbers are read from the right, since the ticket number and version are always
+      digits. On `/tickets`, `Ticket_number` is read after the request's `Incident_ID`
+      (`<Incident_ID>_<n>`, `<Incident_ID>_<n>_<version>`, or just `<n>`). On `/notifier`,
+      `Ticket_Number` is split at its last `_`: `A_1_1` is ticket 1 of incident `A_1`.
     - `Description`: at most 5000 characters.
     - Team names on `/tickets` (`Team_list`) and `/notifier` (`Team_Names`) must be teams that
       exist, i.e. were created through `/teams` or restored by a reset. Others: `INVALID_DATA`.
