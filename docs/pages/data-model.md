@@ -8,8 +8,8 @@ state; see [Known limitations](limitations.md).
 
 **Incident.** Something that may have to be disclosed.
 
-- **ID:** an `Incident_ID` of up to 64 characters with no `_`. The web app and Core API generate
-  12-digit numbers.
+- **ID:** an `Incident_ID`, any string of up to 64 characters (`_` allowed). The web app and Core
+  API generate 12-digit numbers.
 - **Fields:** a description of up to 5000 characters, and an optional dependency name.
 - **Decision fields:** three, each starting as `UNDECIDED`:
     - `Materiality`: `MATERIAL`, `IMMATERIAL` or `UNDECIDED`
