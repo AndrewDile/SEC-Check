@@ -25,7 +25,9 @@ from typing import Any, Callable, Dict, List, Optional
 from .errors import WebAppError, status_for
 from .validation import utc_now
 
-CURRENT_USER: ContextVar[str] = ContextVar("current_user", default="")  # sent as X-User for the audit log
+CURRENT_USER: ContextVar[str] = ContextVar(
+    "current_user", default=""
+)  # sent as X-User for the audit log
 
 # Core API paths (API Spec.txt). Note the operations list spells
 # "/dependancies"; the OpenAPI block uses "/dependencies" (gap G-2).
