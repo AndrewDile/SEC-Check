@@ -51,9 +51,9 @@ The server routes requests from the contract:
 - **Teams** (Teams page): create and remove teams, and add or remove members.
     - **Teams** are stored by the Core API (`/teams`). Only existing teams can be used on tickets,
       notifications, claims and the queue. A team that tickets use can't be removed.
-    - **Members** aren't in the database yet, so the web app keeps them (`membership.py`). They
-      start from each user's teams in `settings.json` and are saved to `membership_file`.
-      When the database stores members, set `membership_source` to `core`; nothing else changes.
+    - **Members** are stored in the database too. The web app changes them with `/teams`
+      `ADD_USER`/`REMOVE_USER` and reads them with `/teams` `GET` and `/users` `GET`/`LIST`
+      (`membership.py`). Removing a team removes its memberships.
     - A user's teams decide what they can claim and which queue opens first.
 
 ## Interfaces
@@ -77,7 +77,6 @@ session cookie is shared.
 | `DELETE /teams/{Team_Name}` | yes | Remove a team (Core `/teams REMOVE`) and its memberships |
 | `POST /teams/{Team_Name}/members` | yes | Add a user: `{"User"}`. `TEAM_DNE`, `USER_DNE`, or `INVALID_DATA` if already a member |
 | `DELETE /teams/{Team_Name}/members/{User}` | yes | Remove a user from a team |
-| `POST /dev/reset-memberships` | no | Put memberships back to the starting teams (tests). Only when `auth_mode` is `dev` |
 | `GET /incidents/{id}/log/entries` | yes | Every ticket version, with its details |
 
 **Outside `/webapp/v1`:** `/` redirects to `/app/`; `/app/*` serves the UI; `/openapi.json`
@@ -124,9 +123,7 @@ The settings are in `config/settings.json`, and environment variables override t
 | `host` / `port` | `SECHECK_HOST` / `SECHECK_PORT` | `127.0.0.1` / `8000` (the container sets `0.0.0.0`) |
 | `core_api_url` | `CORE_API_URL` | `http://127.0.0.1:3001` (Compose sets `http://api:3001`) |
 | `core_timeout_seconds` | `CORE_TIMEOUT_SECONDS` | `10` |
-| `users` | `SECHECK_USERS` (JSON object) | Sample users and the teams each starts in |
-| `membership_source` | `SECHECK_MEMBERSHIP_SOURCE` | `local`: the web app keeps team members. `core` once the database stores them |
-| `membership_file` | `SECHECK_MEMBERSHIP_FILE` | `data/memberships.json`. In Docker, the `web-data` volume keeps it across rebuilds |
+| `users` | `SECHECK_USERS` (JSON list) | The sign-in list. Each must be a user in the Core API database; their teams come from there |
 | `teams` | `SECHECK_TEAMS` | No longer used; teams come from the Core API |
 | `decision_teams` | `SECHECK_DECISION_TEAMS` | `[]`, meaning anyone may decide |
 | `auth_mode` | `SECHECK_AUTH_MODE` | `dev` |

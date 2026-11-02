@@ -78,8 +78,6 @@ services:
     build: ./web_app
     environment:
       CORE_API_URL: http://api:3001
-    volumes:
-      - web-data:/app/data   # team memberships, until the database stores them
     depends_on:
       - api
     restart: unless-stopped
@@ -119,5 +117,4 @@ services:
 
 volumes:
   db-data:
-  web-data:
   caddy-data:
