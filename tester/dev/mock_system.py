@@ -6,7 +6,7 @@ it behaves like the pod's real Core API (api/src/coreapi.ts): for example a
 second team can't claim a ticket another team holds, and an EDIT keeps the
 fields it doesn't send. State is kept per session (X-Session-ID header).
 
-    python dev/mock_system.py --port 8200 [--bug wrong-status|no-validation|crash-logs|unordered-logs|setup-fails]
+    python dev/mock_system.py --port 8200 [--bug <name>]
 
 Bugs, for seeing how the tester reports a faulty system:
   wrong-status    success Status strings are wrong ("OK")
@@ -19,6 +19,9 @@ Bugs, for seeing how the tester reports a faulty system:
   log-latest-only    /logs lists only the latest version of each ticket
   ignore-session     one shared state for every session (X-Session-ID ignored); not a bug
   strict-setup       /test/setup rejects a non-empty setup object (like another pod's system); not a bug
+  members-not-stored /teams ADD_USER answers "User added" but GET doesn't list the member
+  remove-used-team   /teams REMOVE deletes a team even when tickets refer to it
+  no-teams-users     no /teams or /users path (like a system built before they were added)
 """
 
 from __future__ import annotations
@@ -43,6 +46,9 @@ BUGS = (
     "log-latest-only",
     "ignore-session",
     "strict-setup",
+    "members-not-stored",
+    "remove-used-team",
+    "no-teams-users",
 )
 MATERIALITY = ["MATERIAL", "IMMATERIAL", "UNDECIDED"]
 SEVERITY = ["HIGH", "MEDIUM", "LOW", "UNDECIDED", "RESOLVED"]
@@ -69,6 +75,9 @@ class SessionState:
         self.counters: Dict[str, int] = {}
         self.log: Dict[str, List[str]] = {}  # incident -> strong IDs in action order
         self.dependencies: List[str] = []
+        self.default_teams = list(teams)
+        self.users: List[str] = []
+        self.members: List[Tuple[str, str]] = []  # (team, username), in the order added
 
 
 class MockSystem:
@@ -101,7 +110,11 @@ class MockSystem:
                     "/dependencies": self.dependencies,
                     "/dependancies": self.dependencies,
                     "/reset": self.reset,
+                    "/teams": self.teams_path,
+                    "/users": self.users_path,
                 }.get(path)
+                if self.bug == "no-teams-users" and path in ("/teams", "/users"):
+                    route = None
                 if route is None or method != "POST":
                     return 404, {
                         "Error": "INVALID_DATA",
@@ -436,11 +449,94 @@ class MockSystem:
             return {"dp_name": name, "status": self.status("Removed")}
         invalid("method must be one of NEW, MATCH, REMOVE.")
 
+    # ------------------------------------------------------------------ /teams and /users
+    @staticmethod
+    def name(value: Any, key: str) -> str:
+        if not isinstance(value, str) or not value.strip() or len(value) > 64:
+            invalid("%s must be 1-64 characters." % key)
+        return value
+
+    def team_in_use(self, state: SessionState, team: str) -> bool:
+        return any(
+            team in v["Teams"] or team in t["notified"] or t["claimed_by"] == team
+            for t in state.tickets.values()
+            for v in t["versions"]
+        )
+
+    def teams_path(self, state: SessionState, b: Dict[str, Any]) -> Dict[str, Any]:
+        method = b.get("Method")
+        if method == "LIST":
+            return {"Team_List": list(state.teams), "Status": self.status("Teams Listed")}
+        team = self.name(b.get("Team_Name"), "Team_Name")
+        if method == "NEW":
+            if team in state.teams:
+                raise CoreError("TEAM_EXISTS", "The team name already exists in the system.")
+            state.teams.append(team)
+            return {"Team_Name": team, "Status": self.status("Created")}
+        if method not in ("REMOVE", "GET", "ADD_USER", "REMOVE_USER"):
+            invalid("Method must be one of NEW, REMOVE, ADD_USER, REMOVE_USER, GET, LIST.")
+        if team not in state.teams:
+            raise CoreError("TEAM_DNE", "The team name does not exist in the system.")
+        if method == "REMOVE":
+            if self.team_in_use(state, team) and self.bug != "remove-used-team":
+                invalid("Team %s is used by existing tickets and can't be removed." % team)
+            state.teams.remove(team)
+            state.members = [m for m in state.members if m[0] != team]
+            return {"Team_Name": team, "Status": self.status("Removed")}
+        if method == "GET":
+            members = [u for t, u in state.members if t == team]
+            if self.bug == "members-not-stored":
+                members = []
+            return {"Team_Name": team, "Members": members, "Status": self.status("Team Received")}
+        user = self.name(b.get("Username"), "Username")
+        if method == "ADD_USER":
+            if user not in state.users:
+                raise CoreError("USER_DNE", "The user does not exist in the system.")
+            if (team, user) in state.members:
+                raise CoreError("USER_EXISTS", "The user is already a member of the team.")
+            state.members.append((team, user))
+            return {"Team_Name": team, "Username": user, "Status": self.status("User added")}
+        if (team, user) not in state.members:
+            raise CoreError("USER_DNE", "The user is not a member of the team.")
+        state.members.remove((team, user))
+        return {"Team_Name": team, "Username": user, "Status": self.status("User removed")}
+
+    def users_path(self, state: SessionState, b: Dict[str, Any]) -> Dict[str, Any]:
+        method = b.get("Method")
+        if method == "LIST":
+            return {
+                "Users": [self.user_view(state, u) for u in state.users],
+                "Status": self.status("Users Listed"),
+            }
+        user = self.name(b.get("Username"), "Username")
+        if method == "NEW":
+            if not isinstance(b.get("Auth_Hash"), str) or not b["Auth_Hash"]:
+                invalid("Auth_Hash is required when Method is NEW.")
+            if user in state.users:
+                raise CoreError("USER_EXISTS", "The user already exists in the system.")
+            state.users.append(user)
+            return dict(self.user_view(state, user), Status=self.status("Created"))
+        if method not in ("EDIT", "GET", "REMOVE"):
+            invalid("Method must be one of NEW, EDIT, GET, REMOVE, LIST.")
+        if user not in state.users:
+            raise CoreError("USER_DNE", "The user does not exist in the system.")
+        if method == "REMOVE":
+            state.users.remove(user)
+            state.members = [m for m in state.members if m[1] != user]
+            return {"Username": user, "Status": self.status("Removed")}
+        status = "Edited" if method == "EDIT" else "User Received"
+        return dict(self.user_view(state, user), Status=self.status(status))
+
+    @staticmethod
+    def user_view(state: SessionState, user: str) -> Dict[str, Any]:
+        teams = sorted(t for t, u in state.members if u == user)
+        return {"Username": user, "Contact_Channel": "log", "Teams": teams}
+
     # ------------------------------------------------------------------ /reset
     def reset(self, state: SessionState, b: Dict[str, Any]) -> Dict[str, Any]:
         if b.get("method") != "RESET":
             invalid("method must be RESET.")
-        state.__init__(state.teams)
+        state.__init__(state.default_teams)
         return {"status": self.status("DB Wiped")}
 
 

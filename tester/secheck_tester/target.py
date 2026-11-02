@@ -74,6 +74,8 @@ class Target:
             "notifier": "/notifier",
             "logs": "/logs",
             "dependencies": settings.dependencies_path,
+            "teams": "/teams",
+            "users": "/users",
         }
 
     # ------------------------------------------------------------------ test interface

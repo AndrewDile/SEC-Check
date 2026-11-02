@@ -24,8 +24,11 @@ class Settings:
     core_api_url: str = "http://127.0.0.1:3001"
     core_timeout_seconds: float = 10.0
     core_use_system_proxy: bool = False
-    teams: List[str] = field(default_factory=lambda: ["LEGAL", "CYBER1", "CYBER2"])
-    users: Dict[str, List[str]] = field(default_factory=dict)
+    # No longer used: teams come from the Core API (/teams LIST). Kept so old settings files load.
+    teams: List[str] = field(default_factory=list)
+    # Development sign-in users. Their teams come from the Core API database. An object
+    # ({"user": [teams]}) from an older settings file is accepted; only the names are used.
+    users: List[str] = field(default_factory=list)
     hidden_users: List[str] = field(
         default_factory=list
     )  # service accounts, not shown in the sign-in picker
@@ -77,6 +80,7 @@ def load_settings(path: Optional[Path] = None, settings_cls: Type[S] = Settings,
             data[key] = Path(value) if Path(value).is_absolute() else base / value
 
     settings = settings_cls(**data)
+    settings.users = list(settings.users)  # an object's keys, from older settings files
     settings.port = int(settings.port)
     settings.core_timeout_seconds = float(settings.core_timeout_seconds)
     settings.core_api_url = settings.core_api_url.rstrip("/")

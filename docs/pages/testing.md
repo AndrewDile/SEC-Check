@@ -4,11 +4,11 @@
 
 | Suite | Where | Count | Needs |
 |---|---|---|---|
-| Tester self-tests | `tester/tests/` | 30 | Nothing. Runs against the tester's own mock system |
+| Tester self-tests | `tester/tests/` | 35 | Nothing. Runs against the tester's own mock system |
 | Core API calendar tests | `api/test/calendar.test.ts` | 2 | Nothing |
 | Core API database tests | `api/test/db.test.ts` | 24 | A MySQL it can wipe. Skips unless `DB_USER` is set |
 | Core API HTTP tests | `api/test/api.test.ts` | 38 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
-| Cross-team suite | `tester/secheck_tester/suite.py` | 54 | The whole stack. Run through the tester against `/system` |
+| Cross-team suite | `tester/secheck_tester/suite.py` | 70 | The whole stack. Run through the tester against `/system` |
 
 **Not covered by any test in this repo:**
 
@@ -29,7 +29,7 @@ This runs everything, the same way CI does:
 3. Runs the tester self-tests, then `npm test` in `api/` against `http://localhost/system` and
    the database on `127.0.0.1`.
 4. Runs `tester/run_tests.py http://caddy/system --tester http://localhost/tester`, which
-   exits nonzero unless all 54 tests pass.
+   exits nonzero unless all 70 tests pass.
 
 It **wipes your local database**. The cross-team suite runs in its own test session, so it
 doesn't touch that data, and its report includes the Core API's code coverage and request

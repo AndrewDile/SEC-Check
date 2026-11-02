@@ -12,7 +12,7 @@ From the repo root, alongside the Core API (`api/`):
 docker compose up --build
 ```
 
-Open **http://localhost:8000/app/** and pick a user in the top bar. In `docker-compose.yml` the Web App is the `web` service; it reaches the Core API at `http://api:3001`.
+Open **http://localhost/app/** (served through Caddy) and pick a user in the top bar. In `docker-compose.yml` the Web App is the `web` service; it reaches the Core API at `http://api:3001`.
 
 On its own:
 
@@ -57,8 +57,8 @@ Useful URLs:
 | `host` / `port` | `SECHECK_HOST` / `SECHECK_PORT` | `127.0.0.1` / `8000` (container: `0.0.0.0` / `8000`) |
 | `core_api_url` | `CORE_API_URL` | `http://127.0.0.1:3001` (container: `http://api:3001`) |
 | `core_timeout_seconds` | `CORE_TIMEOUT_SECONDS` | `10` |
-| `teams` | `SECHECK_TEAMS` (JSON list) | `["LEGAL","CYBER1","CYBER2"]` |
-| `users` | `SECHECK_USERS` (JSON object) | 4 sample users + `core-gateway` |
+| `users` | `SECHECK_USERS` (JSON list) | 4 sample users + `core-gateway` (their teams come from the Core API) |
+| `teams` | `SECHECK_TEAMS` | No longer used: teams come from the Core API |
 | `hidden_users` | n/a | `["core-gateway"]`: service accounts left out of the sign-in picker |
 | `decision_teams` | `SECHECK_DECISION_TEAMS` (JSON list) | `[]` = any signed-in user may record decisions |
 | `auth_mode` | `SECHECK_AUTH_MODE` | `dev` |
@@ -66,12 +66,28 @@ Useful URLs:
 
 **Sign-in is a development placeholder.** Users pick a name; the browser sends it as an `X-User` header (and a `secheck_session` cookie). There is no password, so don't expose the container publicly until real authentication is chosen (gap G-6). `core-gateway` is the service user a Core API signs in as when it forwards calls to the Web App (see "gateway mode" in `../Web Dev/README.md`).
 
+## Teams
+
+The **Teams** page creates and removes teams and adds or removes members.
+
+- **Teams** live in the Core API (`/teams`): the web app reads them with `LIST` and creates or
+  removes them with `NEW`/`REMOVE`. Tickets, notifications, claims and queues accept only
+  existing teams. A team that tickets use can't be removed.
+- **Members** are stored in the database too (`secheck_web/membership.py`): the web app adds and
+  removes them with `/teams` `ADD_USER`/`REMOVE_USER`, reads a team's with `/teams` `GET`
+  (`Members`), and reads each user's teams with `/users` `GET`/`LIST` (`Teams`). The Core API's
+  `/reset` puts back the default memberships.
+- **Users:** the sign-in list is still `users` in `settings.json`. Each one must also exist in
+  the Core API database (the defaults do), since the Core API rejects an unknown `X-User`.
+- **Extension routes:** `GET /team-members`, `POST /teams`, `DELETE /teams/{Team_Name}`,
+  `POST /teams/{Team_Name}/members` and `DELETE /teams/{Team_Name}/members/{User}`.
+
 ## Layout
 
 ```
 web_app/
   Dockerfile, .dockerignore     container build
-  config/settings.json          ports, Core URL, teams, dev users, who may record decisions
+  config/settings.json          ports, Core URL, dev sign-in users, who may decide
   contracts/webapp_api.*        Web App OpenAPI contract the server runs on (generated; don't hand-edit)
   secheck_web/
     __main__.py                 entry point: python -m secheck_web
@@ -82,7 +98,7 @@ web_app/
     validation.py               JSON-schema subset validator
     web.py                      tiny HTTP server on the standard library
     config.py                   settings
-    static/                     the browser app (HTML, CSS, JS; no build step)
+    static/                     the browser app (HTML, CSS, JS; no build step); data-testid attributes are used by ../ui_tests
       logo.png                  logo in the page footer + browser-tab icon (replace this file to update it)
 ```
 
@@ -97,3 +113,7 @@ web_app/
 | Enum value, max length, pattern, required field | Nothing: validation and the UI dropdowns read the contract |
 | New Web App operation | Add a function with `@operation("<operationId>")` in `secheck_web/handlers/` (until then it answers `501`) |
 | Core API field or path renamed | `secheck_web/core_client.py` |
+
+## Browser tests
+
+`../ui_tests` drives this app in a real browser (Playwright) against the Docker stack. See `../ui_tests/README.md`. The tests find elements by their `data-testid` attributes in `static/index.html` and `static/app.js`, so keep those when changing the markup.
