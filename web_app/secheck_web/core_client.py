@@ -19,10 +19,13 @@ import json
 import socket
 import urllib.error
 import urllib.request
+from contextvars import ContextVar
 from typing import Any, Callable, Dict, List, Optional
 
 from .errors import WebAppError, status_for
 from .validation import utc_now
+
+CURRENT_USER: ContextVar[str] = ContextVar("current_user", default="")  # sent as X-User for the audit log
 
 # Core API paths (API Spec.txt). Note the operations list spells
 # "/dependancies"; the OpenAPI block uses "/dependencies" (gap G-2).
@@ -82,6 +85,7 @@ class CoreClient:
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 ORIGIN_HEADER: ORIGIN_WEBAPP,
+                **({"X-User": CURRENT_USER.get()} if CURRENT_USER.get() else {}),
             },
         )
         try:
@@ -192,6 +196,7 @@ class CoreClient:
         materiality=None,
         severity=None,
         urgency=None,
+        note=None,
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {
             "Incident_ID": incident_id,
@@ -205,6 +210,7 @@ class CoreClient:
             ("Materiality", materiality),
             ("Severity", severity),
             ("Urgency", urgency),
+            ("Note", note),
         ):
             if value is not None:
                 body[key] = value
