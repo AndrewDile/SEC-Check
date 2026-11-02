@@ -3,14 +3,18 @@
  * Talks only to the Web App API (/webapp/v1). Enum values (materiality,
  * severity, urgency, claim state) are read from /openapi.json at startup, so
  * changing them in the spec changes the dropdowns without editing this file.
+ *
+ * data-testid attributes mark the elements the browser tests (ui_tests/) use.
+ * Keep them when changing the markup so the tests keep finding things.
  */
 "use strict";
 
 const BASE = "/webapp/v1";
-const state = { user: null, session: null, teams: [], users: [], enums: {}, logOpenFor: null };
+const state = { user: null, session: null, teams: [], users: [], enums: {}, logOpenFor: null, pendingNotice: null, firstRender: true };
 const $ = (sel, root = document) => root.querySelector(sel);
 const $main = $("#main");
 const $notice = $("#notice");
+const $announcer = $("#announcer");
 
 // ------------------------------------------------------------------ utilities
 function esc(value) {
@@ -38,7 +42,7 @@ function options(values, selected, blank) {
 }
 function teamChecks(name, checked = []) {
   return `<div class="checks">${state.teams.map(t =>
-    `<label><input type="checkbox" name="${name}" value="${esc(t)}"${checked.includes(t) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</div>`;
+    `<label><input type="checkbox" name="${name}" value="${esc(t)}" data-testid="team-${esc(t)}"${checked.includes(t) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</div>`;
 }
 /** Read a form into an object: drops empty strings, collects checkbox groups into arrays. */
 function formData(form, arrays = []) {
@@ -85,6 +89,22 @@ function fail(err) {
 }
 function clearNotice() { $notice.hidden = true; }
 
+/** Tell screen readers about a change that has no visible notice. */
+function announce(message) {
+  $announcer.textContent = "";
+  setTimeout(() => { $announcer.textContent = message; }, 50);
+}
+
+/** Call when a view has rendered: sets the page title and, except on first load, moves focus
+ *  to the view's <h1> so keyboard and screen-reader users land on the new content. */
+function settle(title) {
+  document.title = `${title} – SEC-Check`;
+  $main.removeAttribute("aria-busy");
+  if (state.firstRender) { state.firstRender = false; return; }
+  const heading = $("h1", $main);
+  if (heading) { heading.setAttribute("tabindex", "-1"); heading.focus(); }
+}
+
 /** Wire a form: disable while submitting, report errors, run onDone on success. */
 function onSubmit(form, handler) {
   form.addEventListener("submit", async ev => {
@@ -110,11 +130,7 @@ async function init() {
     state.enums = { Materiality: ["MATERIAL", "IMMATERIAL", "UNDECIDED"], Severity: ["HIGH", "MEDIUM", "LOW", "UNDECIDED", "RESOLVED"], Urgency: ["URGENT", "NOT_URGENT", "UNDECIDED", "RESOLVED"], Claim: ["CLAIMED", "UNCLAIMED"] };
   }
   const select = $("#user-select");
-  try {
-    state.users = (await api("GET", "/dev/users")).Users;
-  } catch (e) { state.users = []; }
-  select.innerHTML = `<option value="">Choose a user</option>` +
-    state.users.map(u => `<option value="${esc(u.User)}">${esc(u.User)} (${esc(u.Teams.join(", "))})</option>`).join("");
+  await loadUsers();
   select.addEventListener("change", async () => { await signIn(select.value); route(); });
   const saved = recall("secheck_user");
   if (saved && state.users.some(u => u.User === saved)) { select.value = saved; await signIn(saved); }
@@ -123,6 +139,25 @@ async function init() {
   let resizeTimer;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => clampText(document), 150); });
   route();
+}
+
+/** Fill the sign-in picker; each user is shown with their current teams. */
+async function loadUsers() {
+  const select = $("#user-select");
+  try {
+    state.users = (await api("GET", "/dev/users")).Users;
+  } catch (e) { state.users = []; }
+  const current = select.value || state.user || "";
+  select.innerHTML = `<option value="">Choose a user</option>` +
+    state.users.map(u => `<option value="${esc(u.User)}">${esc(u.User)} (${esc(u.Teams.join(", ") || "no team")})</option>`).join("");
+  select.value = current;
+}
+
+/** After teams or memberships change: reload the team list, the signed-in user's teams and the picker. */
+async function refreshTeams() {
+  state.teams = (await api("GET", "/teams")).Teams;
+  if (state.user) state.session = await api("GET", "/session");
+  await loadUsers();
 }
 
 async function signIn(name) {
@@ -150,6 +185,9 @@ async function checkHealth() {
 // ------------------------------------------------------------------ routing
 function route() {
   clearNotice();
+  $main.setAttribute("aria-busy", "true");
+  // A message set just before navigating (e.g. "Incident created") is shown on the new page.
+  if (state.pendingNotice) { ok(state.pendingNotice); state.pendingNotice = null; }
   const parts = (location.hash || "#/incidents").replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   const page = parts[0] || "incidents";
   document.querySelectorAll("[data-nav]").forEach(a => a.toggleAttribute("aria-current", false));
@@ -159,12 +197,14 @@ function route() {
   if (page === "incidents" && parts[1]) return viewIncident(parts[1]);
   if (page === "queue") return viewQueue();
   if (page === "dependencies") return viewDependencies();
+  if (page === "teams") return viewTeams();
   return viewIncidents();
 }
 
 function viewSignIn() {
-  $main.innerHTML = `<div class="empty"><h2>Choose who you are</h2>
+  $main.innerHTML = `<div class="empty" data-testid="signin-prompt"><h1>Choose who you are</h1>
     <p>Pick a user in the top bar to start. Sign-in is a development stand-in until the team chooses an authentication method.</p></div>`;
+  settle("Sign in");
 }
 
 // ------------------------------------------------------------------ incidents list + intake
@@ -193,30 +233,31 @@ function clampText(root) {
 
 async function viewIncidents() {
   $main.innerHTML = `
-    <div class="page-head"><h1>Incidents</h1><button class="primary" id="new-btn" aria-expanded="false">Report an incident</button></div>
+    <div class="page-head"><h1>Incidents</h1><button class="primary" id="new-btn" data-testid="new-incident" aria-expanded="false">Report an incident</button></div>
     <section class="panel" id="intake" hidden>
       <h2>Report an incident</h2>
-      <form id="intake-form">
-        <label>What happened? <textarea name="Description" maxlength="5000" required></textarea></label>
+      <form id="intake-form" data-testid="intake-form">
+        <label>What happened? <textarea name="Description" maxlength="5000" required data-testid="intake-description"></textarea></label>
         <div class="row">
-          <label>Third-party dependency <select name="Dependency_Name" id="dep-select"><option value="">None</option></select></label>
-          <label>Discovered at <span class="hint">Leave blank to use now</span><input type="datetime-local" name="Timestamp"></label>
-          <label>Incident ID <span class="hint">Leave blank to generate one</span><input name="Incident_ID" inputmode="numeric" pattern="[0-9]+"></label>
+          <label>Third-party dependency <select name="Dependency_Name" id="dep-select" data-testid="intake-dependency"><option value="">None</option></select></label>
+          <label>Discovered at <span class="hint">Leave blank to use now</span><input type="datetime-local" name="Timestamp" data-testid="intake-timestamp"></label>
+          <label>Incident ID <span class="hint">Leave blank to generate one</span><input name="Incident_ID" inputmode="numeric" pattern="[0-9]+" data-testid="intake-id"></label>
         </div>
         <div class="row">
-          <label>Materiality <select name="Materiality">${options(state.enums.Materiality, "UNDECIDED")}</select></label>
-          <label>Severity <select name="Severity">${options(state.enums.Severity, "UNDECIDED")}</select></label>
-          <label>Urgency <select name="Urgency">${options(state.enums.Urgency, "UNDECIDED")}</select></label>
+          <label>Materiality <select name="Materiality" data-testid="intake-materiality">${options(state.enums.Materiality, "UNDECIDED")}</select></label>
+          <label>Severity <select name="Severity" data-testid="intake-severity">${options(state.enums.Severity, "UNDECIDED")}</select></label>
+          <label>Urgency <select name="Urgency" data-testid="intake-urgency">${options(state.enums.Urgency, "UNDECIDED")}</select></label>
         </div>
-        <div class="actions"><button class="primary">Create incident</button><button type="button" id="cancel-intake">Cancel</button></div>
+        <div class="actions"><button class="primary" data-testid="intake-submit">Create incident</button><button type="button" id="cancel-intake" data-testid="intake-cancel">Cancel</button></div>
       </form>
     </section>
-    <form class="inline-form" id="open-form">
-      <label>Open an incident by ID <input name="id" inputmode="numeric" pattern="[0-9]+" required></label>
-      <button>Open</button>
+    <form class="inline-form" id="open-form" data-testid="open-form">
+      <label>Open an incident by ID <input name="id" inputmode="numeric" pattern="[0-9]+" required data-testid="open-id"></label>
+      <button data-testid="open-submit">Open</button>
     </form>
-    <section id="list"><p class="muted">Loading incidents…</p></section>`;
+    <section id="list" data-testid="incident-list"><p class="muted">Loading incidents…</p></section>`;
 
+  settle("Incidents");
   const intake = $("#intake"), newBtn = $("#new-btn");
   const toggle = show => { intake.hidden = !show; newBtn.setAttribute("aria-expanded", String(show)); if (show) $("textarea", intake).focus(); };
   newBtn.addEventListener("click", () => toggle(intake.hidden));
@@ -226,8 +267,8 @@ async function viewIncidents() {
     const body = formData(f);
     if (body.Timestamp) body.Timestamp = new Date(body.Timestamp).toISOString();
     const created = await api("POST", "/incidents", body);
+    state.pendingNotice = `Incident ${created.Incident_ID} created.`;
     location.hash = `#/incidents/${created.Incident_ID}`;
-    ok(`Incident ${created.Incident_ID} created.`);
   });
 
   api("GET", "/dependencies").then(d => {
@@ -237,28 +278,30 @@ async function viewIncidents() {
   });
 
   const list = $("#list");
+  list.setAttribute("aria-busy", "true");
   try {
     const data = await api("GET", "/incidents?page_size=100");
+    list.removeAttribute("aria-busy");
     if (!data.Incidents.length) {
-      list.innerHTML = `<div class="empty"><p>No incidents yet.</p><p>Use “Report an incident” to log the first one.</p></div>`;
+      list.innerHTML = `<div class="empty" data-testid="incidents-empty"><p>No incidents yet.</p><p>Use “Report an incident” to log the first one.</p></div>`;
       return;
     }
     list.innerHTML = `<div class="table-wrap"><table>
       <thead><tr><th>Incident</th><th>Description</th><th>Materiality</th><th>Severity</th><th>Urgency</th><th>Discovered</th></tr></thead>
       <tbody>${data.Incidents.map(i => `
-        <tr class="link" tabindex="0" data-id="${esc(i.Incident_ID)}">
-          <td class="num">${esc(i.Incident_ID)}</td>
+        <tr class="link" data-id="${esc(i.Incident_ID)}" data-testid="incident-row">
+          <td class="num"><a href="#/incidents/${encodeURIComponent(i.Incident_ID)}" data-testid="incident-link">${esc(i.Incident_ID)}</a></td>
           <td class="desc"><div class="clamp" data-no-toggle>${esc(i.Description)}</div></td>
           <td class="state state-${esc(i.Materiality)}">${esc(label(i.Materiality))}</td>
           <td>${esc(label(i.Severity))}</td><td>${esc(label(i.Urgency))}</td>
           <td>${esc(fmtTime(i.Timestamp))}</td>
         </tr>`).join("")}</tbody></table></div>`;
+    // The ID is a real link (keyboard and screen readers); clicking anywhere on the row also opens it.
     list.querySelectorAll("tr.link").forEach(tr => {
-      const open = () => (location.hash = `#/incidents/${tr.dataset.id}`);
-      tr.addEventListener("click", open);
-      tr.addEventListener("keydown", e => { if (e.key === "Enter") open(); });
+      tr.addEventListener("click", ev => { if (!ev.target.closest("a")) location.hash = `#/incidents/${tr.dataset.id}`; });
     });
   } catch (err) {
+    list.removeAttribute("aria-busy");
     list.innerHTML = `<div class="empty"><p>The incident list isn't available: ${esc(err.data?.Message || err.message)}</p>
       <p>The Core API has no list operation yet (gap G-5). Open an incident by ID above.</p></div>`;
   }
@@ -273,7 +316,8 @@ async function viewIncident(id) {
   try {
     [inc, tk] = await Promise.all([api("GET", `/incidents/${encodeURIComponent(id)}`), api("GET", `/incidents/${encodeURIComponent(id)}/tickets?expand=true`)]);
   } catch (err) {
-    $main.innerHTML = `<div class="empty"><p>Incident ${esc(id)} could not be loaded.</p><p><a href="#/incidents">Back to incidents</a></p></div>`;
+    $main.innerHTML = `<div class="empty"><h1>Incident ${esc(id)} could not be loaded</h1><p><a href="#/incidents">Back to incidents</a></p></div>`;
+    settle("Incident not found");
     return fail(err);
   }
   const tickets = tk.Tickets || [];
@@ -283,76 +327,78 @@ async function viewIncident(id) {
   const m = inc.Materiality in BAND_WORD ? inc.Materiality : "UNDECIDED";
 
   $main.innerHTML = `
-    <p><a href="#/incidents">All incidents</a></p>
-    <section class="band band-${m}" aria-label="Materiality determination">
-      <div class="band-state">${esc(BAND_WORD[m] || label(inc.Materiality))}</div>
+    <p><a href="#/incidents" data-testid="back-to-incidents">All incidents</a></p>
+    <h1 class="sr-only" data-testid="incident-heading">Incident ${esc(inc.Incident_ID)}: ${esc(BAND_WORD[m] || label(inc.Materiality))}</h1>
+    <section class="band band-${m}" aria-label="Materiality determination" data-testid="incident-band">
+      <div class="band-state" data-testid="incident-materiality">${esc(BAND_WORD[m] || label(inc.Materiality))}</div>
       <dl class="band-facts">
-        <div><dt>Incident</dt><dd class="num">${esc(inc.Incident_ID)}</dd></div>
+        <div><dt>Incident</dt><dd class="num" data-testid="incident-id">${esc(inc.Incident_ID)}</dd></div>
         <div><dt>Discovered</dt><dd>${esc(fmtTime(inc.Timestamp))}</dd></div>
-        <div><dt>Severity</dt><dd>${esc(label(inc.Severity))}</dd></div>
-        <div><dt>Urgency</dt><dd>${esc(label(inc.Urgency))}</dd></div>
-        <div><dt>Dependency</dt><dd>${esc(inc.Dependency_Name || "None")}</dd></div>
+        <div><dt>Severity</dt><dd data-testid="incident-severity">${esc(label(inc.Severity))}</dd></div>
+        <div><dt>Urgency</dt><dd data-testid="incident-urgency">${esc(label(inc.Urgency))}</dd></div>
+        <div><dt>Dependency</dt><dd data-testid="incident-dependency">${esc(inc.Dependency_Name || "None")}</dd></div>
       </dl>
     </section>
     <div class="cols">
       <div>
         <section class="panel">
           <h2>What happened</h2>
-          <p class="clamp">${esc(inc.Description)}</p>
-          <details><summary>Edit details</summary>
-            <form id="edit-form">
-              <label>Description <textarea name="Description" maxlength="5000" required>${esc(inc.Description)}</textarea></label>
-              <label>Dependency <span class="hint">Leave blank for none</span><input name="Dependency_Name" value="${esc(inc.Dependency_Name || "")}"></label>
-              <button class="primary">Save details</button>
+          <p class="clamp" data-testid="incident-description">${esc(inc.Description)}</p>
+          <details><summary data-testid="edit-toggle">Edit details</summary>
+            <form id="edit-form" data-testid="edit-form">
+              <label>Description <textarea name="Description" maxlength="5000" required data-testid="edit-description">${esc(inc.Description)}</textarea></label>
+              <label>Dependency <span class="hint">Leave blank for none</span><input name="Dependency_Name" value="${esc(inc.Dependency_Name || "")}" data-testid="edit-dependency"></label>
+              <button class="primary" data-testid="edit-submit">Save details</button>
             </form>
           </details>
         </section>
         <section class="panel">
           <h2>Tickets</h2>
-          ${tickets.length ? `<ol class="timeline">${tickets.map(t => ticketItem(t, myTeams)).join("")}</ol>` : `<p class="muted">No tickets yet.</p>`}
+          ${tickets.length ? `<ol class="timeline" data-testid="ticket-list">${tickets.map(t => ticketItem(t, myTeams)).join("")}</ol>` : `<p class="muted" data-testid="tickets-empty">No tickets yet.</p>`}
         </section>
         <section class="panel">
           <h2>Log a ticket</h2>
-          <form id="ticket-form">
-            <label>Details <textarea name="Description" maxlength="5000" required></textarea></label>
+          <form id="ticket-form" data-testid="ticket-form">
+            <label>Details <textarea name="Description" maxlength="5000" required data-testid="ticket-description"></textarea></label>
             <div class="row">
-              <label>Severity <select name="Ticket_severity">${options(state.enums.Severity, "", "Not set")}</select></label>
-              <label>Urgency <select name="Ticket_urgency">${options(state.enums.Urgency, "", "Not set")}</select></label>
+              <label>Severity <select name="Ticket_severity" data-testid="ticket-severity">${options(state.enums.Severity, "", "Not set")}</select></label>
+              <label>Urgency <select name="Ticket_urgency" data-testid="ticket-urgency">${options(state.enums.Urgency, "", "Not set")}</select></label>
             </div>
             <fieldset><legend>Assign to teams</legend>${teamChecks("Team_list")}</fieldset>
-            <label class="checks"><input type="checkbox" name="Notify" value="yes" checked> Notify the assigned teams</label>
-            <button class="primary">Log ticket</button>
+            <label class="checks"><input type="checkbox" name="Notify" value="yes" checked data-testid="ticket-notify"> Notify the assigned teams</label>
+            <button class="primary" data-testid="ticket-submit">Log ticket</button>
           </form>
         </section>
-        <section class="panel" id="form8k-panel" hidden></section>
+        <section class="panel" id="form8k-panel" data-testid="form-8k" hidden></section>
       </div>
       <aside>
         <section class="panel">
           <h2>Record a decision</h2>
           ${canDecide ? "" : `<p class="muted">Your teams can't record decisions on this deployment.</p>`}
-          <form id="decision-form">
-            <label>Materiality <select name="Materiality">${options(state.enums.Materiality, inc.Materiality)}</select></label>
-            <label>Severity <select name="Severity">${options(state.enums.Severity, inc.Severity)}</select></label>
-            <label>Urgency <select name="Urgency">${options(state.enums.Urgency, inc.Urgency)}</select></label>
-            <label>Reason for this decision <span class="hint">Kept in the permanent log</span><textarea name="Rationale" maxlength="4000" required></textarea></label>
-            <button class="primary"${canDecide ? "" : " disabled"}>Record decision</button>
+          <form id="decision-form" data-testid="decision-form">
+            <label>Materiality <select name="Materiality" data-testid="decision-materiality">${options(state.enums.Materiality, inc.Materiality)}</select></label>
+            <label>Severity <select name="Severity" data-testid="decision-severity">${options(state.enums.Severity, inc.Severity)}</select></label>
+            <label>Urgency <select name="Urgency" data-testid="decision-urgency">${options(state.enums.Urgency, inc.Urgency)}</select></label>
+            <label>Reason for this decision <span class="hint">Kept in the permanent log</span><textarea name="Rationale" maxlength="4000" required data-testid="decision-rationale"></textarea></label>
+            <button class="primary" data-testid="decision-submit"${canDecide ? "" : " disabled"}>Record decision</button>
           </form>
         </section>
         <section class="panel">
           <h2>Form 8-K</h2>
           ${material ? `<p>Gather this incident's information by the parts of Item 1.05.</p>` : `<p class="muted">Available once the incident is marked material.</p>`}
-          <button id="open-8k"${material ? "" : " disabled"}>Open 8-K view</button>
+          <button id="open-8k" data-testid="open-8k"${material ? "" : " disabled"}>Open 8-K view</button>
         </section>
       </aside>
     </div>
     <section class="panel full-log-panel">
-      <details id="full-log"${state.logOpenFor === inc.Incident_ID ? " open" : ""}>
-        <summary>Full log (${tk.Ticket_ID_List.length} entries)</summary>
+      <details id="full-log" data-testid="full-log"${state.logOpenFor === inc.Incident_ID ? " open" : ""}>
+        <summary data-testid="full-log-toggle">Full log (${tk.Ticket_ID_List.length} entries)</summary>
         <p class="muted">Every recorded version of every ticket, oldest first. Updating a ticket adds a new version; earlier versions stay here.</p>
-        <div id="log-entries"><p class="muted">Loading entries…</p></div>
+        <div id="log-entries" data-testid="log-entries"><p class="muted">Loading entries…</p></div>
       </details>
     </section>`;
 
+  settle(`Incident ${inc.Incident_ID}`);
   onSubmit($("#edit-form"), async f => {
     const body = formData(f);
     body.Dependency_Name = f.Dependency_Name.value.trim();
@@ -417,7 +463,7 @@ async function showLogEntries(id) {
     if (!data.Entries.length) { box.innerHTML = `<p class="muted">No log entries yet.</p>`; return; }
     box.innerHTML = `<div class="table-wrap"><table class="log-table">
       <thead><tr><th>#</th><th>Entry</th><th>Recorded</th><th>Details</th><th>Severity</th><th>Urgency</th><th>Teams</th></tr></thead>
-      <tbody>${data.Entries.map((e, i) => `<tr class="${e.Entry_Type && e.Entry_Type !== "TICKET" ? "audit" : ""}">
+      <tbody>${data.Entries.map((e, i) => `<tr class="${e.Entry_Type && e.Entry_Type !== "TICKET" ? "audit" : ""}" data-testid="log-entry" data-ticket-id="${esc(e.Ticket_ID)}">
         <td class="num">${i + 1}</td>
         <td><span class="num">${esc(e.Ticket_ID)}</span><br><span class="muted">${esc(entryKind(e))}</span></td>
         <td class="when">${esc(fmtTime(e.Timestamp))}</td>
@@ -436,32 +482,32 @@ function ticketItem(t, myTeams) {
   const isAudit = /^(INTAKE|EDIT):|^DECISION by /.test(t.Ticket_Description || "");
   const claimed = t.Ticket_Claim === "CLAIMED";
   const claimTeams = myTeams.filter(x => state.teams.includes(x));
-  return `<li class="ticket${isAudit ? " audit" : ""}">
+  return `<li class="ticket${isAudit ? " audit" : ""}" data-testid="ticket" data-ticket-id="${esc(t.Ticket_ID)}" data-ticket-number="${esc(number)}">
     <div class="ticket-head"><strong class="num">${esc(t.Ticket_ID)}</strong><span>${esc(fmtTime(t.Timestamp))}</span></div>
-    <div class="ticket-body clamp">${esc(t.Ticket_Description)}</div>
+    <div class="ticket-body clamp" data-testid="ticket-body">${esc(t.Ticket_Description)}</div>
     ${isAudit ? "" : `<div class="meta">
-      <span class="tag">Severity: ${esc(label(t.ticket_severity))}</span>
-      <span class="tag">Urgency: ${esc(label(t.ticket_urgency))}</span>
+      <span class="tag" data-testid="ticket-severity-tag">Severity: ${esc(label(t.ticket_severity))}</span>
+      <span class="tag" data-testid="ticket-urgency-tag">Urgency: ${esc(label(t.ticket_urgency))}</span>
       ${(t.Team_List || []).map(x => `<span class="tag">${esc(x)}</span>`).join("")}
-      ${t.Ticket_Claim ? `<span class="tag ${claimed ? "claimed" : "unclaimed"}">${claimed ? `Claimed${t.Claimed_By ? ` by ${esc(t.Claimed_By)}` : ""}` : "Unclaimed"}</span>` : ""}
+      ${t.Ticket_Claim ? `<span class="tag ${claimed ? "claimed" : "unclaimed"}" data-testid="ticket-claim">${claimed ? `Claimed${t.Claimed_By ? ` by ${esc(t.Claimed_By)}` : ""}` : "Unclaimed"}</span>` : ""}
     </div>
     <div class="actions">
-      ${!claimed && claimTeams.length ? `<form class="inline-form" data-claim="${esc(number)}" style="margin:0">
-        <select name="Team_Name" aria-label="Claim for team">${claimTeams.map(x => `<option>${esc(x)}</option>`).join("")}</select>
-        <button>Claim</button></form>` : ""}
+      ${!claimed && claimTeams.length ? `<form class="inline-form" data-claim="${esc(number)}" data-testid="claim-form" style="margin:0">
+        <select name="Team_Name" aria-label="Claim for team" data-testid="claim-team">${claimTeams.map(x => `<option>${esc(x)}</option>`).join("")}</select>
+        <button data-testid="claim-submit">Claim</button></form>` : ""}
     </div>
-    <details><summary>Notify teams</summary>
-      <form data-notify="${esc(number)}">${teamChecks("Team_Names")}<button>Notify teams</button></form>
+    <details><summary data-testid="notify-toggle">Notify teams</summary>
+      <form data-notify="${esc(number)}" data-testid="notify-form">${teamChecks("Team_Names")}<button data-testid="notify-submit">Notify teams</button></form>
     </details>
-    <details><summary>Update ticket</summary>
-      <form data-edit="${esc(number)}">
-        <label>Details <textarea name="Description" maxlength="5000" required>${esc(t.Ticket_Description)}</textarea></label>
+    <details><summary data-testid="update-toggle">Update ticket</summary>
+      <form data-edit="${esc(number)}" data-testid="update-form">
+        <label>Details <textarea name="Description" maxlength="5000" required data-testid="update-description">${esc(t.Ticket_Description)}</textarea></label>
         <div class="row">
-          <label>Severity <select name="Ticket_severity">${options(state.enums.Severity, t.ticket_severity)}</select></label>
-          <label>Urgency <select name="Ticket_urgency">${options(state.enums.Urgency, t.ticket_urgency)}</select></label>
+          <label>Severity <select name="Ticket_severity" data-testid="update-severity">${options(state.enums.Severity, t.ticket_severity)}</select></label>
+          <label>Urgency <select name="Ticket_urgency" data-testid="update-urgency">${options(state.enums.Urgency, t.ticket_urgency)}</select></label>
         </div>
         <fieldset><legend>Teams</legend>${teamChecks("Team_list", t.Team_List || [])}</fieldset>
-        <button class="primary">Save new version</button>
+        <button class="primary" data-testid="update-submit">Save new version</button>
       </form>
     </details>`}
   </li>`;
@@ -473,24 +519,27 @@ async function show8k(id) {
   const panel = $("#form8k-panel");
   panel.hidden = false;
   panel.innerHTML = `
-    <div class="page-head"><h2>Form 8-K, Item 1.05</h2><button id="copy-8k">Copy as text</button></div>
+    <div class="page-head"><h2>Form 8-K, Item 1.05</h2><button id="copy-8k" data-testid="copy-8k">Copy as text</button></div>
     <p class="muted">A summary to help prepare the filing. It is not filed or completed automatically.</p>
     <div class="form8k">
-      <section><h3>Nature</h3><p class="clamp">${esc(item.Nature)}</p></section>
-      <section><h3>Scope</h3><dl>
+      <section data-testid="8k-nature"><h3>Nature</h3><p class="clamp">${esc(item.Nature)}</p></section>
+      <section data-testid="8k-scope"><h3>Scope</h3><dl>
         <dt>Severity</dt><dd>${esc(label(item.Scope.Severity))}</dd>
         <dt>Dependency</dt><dd>${esc(item.Scope.Dependency_Name || "None")}</dd>
         <dt>Teams involved</dt><dd>${esc((item.Scope.Teams_Involved || []).join(", ") || "None")}</dd></dl></section>
-      <section><h3>Timing</h3><dl>
+      <section data-testid="8k-timing"><h3>Timing</h3><dl>
         <dt>Discovered</dt><dd>${esc(fmtTime(item.Timing.Discovered_At))}</dd>
         <dt>Determined material</dt><dd>${esc(fmtTime(item.Timing.Determined_At))}</dd></dl>
         <ol>${item.Timing.Events.map(e => `<li><span class="num">${esc(e.Ticket_ID)}</span>, ${esc(fmtTime(e.Timestamp))}: ${esc(e.Summary)}</li>`).join("")}</ol></section>
-      <section><h3>Material impact</h3><p class="clamp">${esc(item.Material_Impact || "No rationale recorded.")}</p></section>
-      <section><h3>Filing</h3><dl>
+      <section data-testid="8k-impact"><h3>Material impact</h3><p class="clamp">${esc(item.Material_Impact || "No rationale recorded.")}</p></section>
+      <section data-testid="8k-filing"><h3>Filing</h3><dl>
         <dt>Determined at</dt><dd>${esc(fmtTime(v.Filing.Determined_At))}</dd>
         <dt>Filing deadline</dt><dd>${v.Filing.Filing_Deadline ? esc(fmtTime(v.Filing.Filing_Deadline)) : "Not provided by the Core API yet (four business days after determination)"}</dd></dl></section>
     </div>`;
   clampText(panel);
+  const heading = $("h2", panel);   // move keyboard and screen-reader users to the view that just opened
+  heading.setAttribute("tabindex", "-1");
+  heading.focus({ preventScroll: true });
   $("#copy-8k").addEventListener("click", async () => {
     const text = [
       `Form 8-K Item 1.05 summary, incident ${v.Incident_ID}`,
@@ -514,34 +563,37 @@ async function viewQueue() {
   const team = recall("secheck_queue_team") || ordered[0] || "";
   $main.innerHTML = `
     <div class="page-head"><h1>Team queue</h1></div>
-    <form class="inline-form" id="queue-form">
-      <label>Team <select name="team">${ordered.map(t => `<option${t === team ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
-      <label>Show <select name="claim">${options(state.enums.Claim, "UNCLAIMED")}</select></label>
-      <button>Show tickets</button>
+    <form class="inline-form" id="queue-form" data-testid="queue-form">
+      <label>Team <select name="team" data-testid="queue-team">${ordered.map(t => `<option${t === team ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+      <label>Show <select name="claim" data-testid="queue-claim">${options(state.enums.Claim, "UNCLAIMED")}</select></label>
+      <button data-testid="queue-submit">Show tickets</button>
     </form>
-    <section id="queue"></section>`;
+    <section id="queue" data-testid="queue"></section>`;
+  settle("Team queue");
   const form = $("#queue-form");
   const load = async () => {
     const t = form.team.value, c = form.claim.value;
     store("secheck_queue_team", t);
     const out = $("#queue");
     out.innerHTML = `<p class="muted">Loading…</p>`;
+    out.setAttribute("aria-busy", "true");
     try {
       const q = await api("GET", `/queue?team=${encodeURIComponent(t)}&claim=${encodeURIComponent(c)}`);
+      out.removeAttribute("aria-busy");
       if (!q.Tickets.length) {
-        out.innerHTML = `<div class="empty"><p>No ${esc(label(c).toLowerCase())} tickets for ${esc(t)}.</p></div>`;
+        out.innerHTML = `<div class="empty" data-testid="queue-empty"><p>No ${esc(label(c).toLowerCase())} tickets for ${esc(t)}.</p></div>`;
         return;
       }
       const canClaim = mine.includes(t);
       out.innerHTML = `<div class="table-wrap"><table>
         <thead><tr><th>Ticket</th><th>Details</th><th>Severity</th><th>Urgency</th><th>Notified</th><th></th></tr></thead>
-        <tbody>${q.Tickets.map(x => `<tr>
+        <tbody>${q.Tickets.map(x => `<tr data-testid="queue-row" data-ticket-number="${esc(x.Ticket_number)}">
           <td class="num"><a href="#/incidents/${esc(x.Incident_ID)}">${esc(x.Ticket_number)}</a></td>
           <td class="desc"><div class="clamp" data-no-toggle>${esc(x.Ticket_Description)}</div></td>
           <td>${esc(label(x.ticket_severity))}</td><td>${esc(label(x.ticket_urgency))}</td>
           <td>${esc(fmtTime(x.Notified_At))}</td>
           <td>${x.Ticket_Claim === "CLAIMED" ? `Claimed by ${esc(x.Claimed_By || "a team")}`
-            : canClaim ? `<button data-claim="${esc(x.Ticket_number)}">Claim for ${esc(t)}</button>` : ""}</td>
+            : canClaim ? `<button data-claim="${esc(x.Ticket_number)}" data-testid="queue-claim-button">Claim for ${esc(t)}</button>` : ""}</td>
         </tr>`).join("")}</tbody></table></div>`;
       out.querySelectorAll("button[data-claim]").forEach(b => b.addEventListener("click", async () => {
         b.disabled = true;
@@ -549,6 +601,7 @@ async function viewQueue() {
         catch (err) { b.disabled = false; fail(err); }
       }));
     } catch (err) {
+      out.removeAttribute("aria-busy");
       out.innerHTML = `<div class="empty"><p>The team queue isn't available: ${esc(err.data?.Message || err.message)}</p></div>`;
     }
   };
@@ -562,26 +615,31 @@ async function viewDependencies() {
     <div class="page-head"><h1>Dependencies</h1></div>
     <p class="muted">Third-party services the company relies on. Incidents can be linked to one of these.</p>
     <div class="cols">
-      <section class="panel" id="dep-list"><p class="muted">Loading…</p></section>
+      <section class="panel" id="dep-list" data-testid="dependency-list"><p class="muted">Loading…</p></section>
       <aside>
         <section class="panel"><h2>Add a dependency</h2>
-          <form id="dep-add"><label>Name <input name="dp_name" required></label><button class="primary">Add dependency</button></form>
+          <form id="dep-add" data-testid="dep-add-form"><label>Name <input name="dp_name" required data-testid="dep-add-name"></label><button class="primary" data-testid="dep-add-submit">Add dependency</button></form>
         </section>
         <section class="panel"><h2>Check a dependency</h2>
-          <form id="dep-check"><label>Name <input name="dp_name" required></label><button>Check</button></form>
-          <p id="dep-check-result" class="muted"></p>
+          <form id="dep-check" data-testid="dep-check-form"><label>Name <input name="dp_name" required data-testid="dep-check-name"></label><button data-testid="dep-check-submit">Check</button></form>
+          <p id="dep-check-result" class="muted" data-testid="dep-check-result"></p>
         </section>
       </aside>
     </div>`;
+  settle("Dependencies");
   const loadList = async () => {
     const el = $("#dep-list");
     try {
       const d = await api("GET", "/dependencies");
       el.innerHTML = `<h2>Registered</h2>` + (d.Dependencies.length
-        ? `<table><tbody>${d.Dependencies.map(n => `<tr><td>${esc(n)}</td><td style="text-align:right"><button class="danger" data-remove="${esc(n)}">Remove</button></td></tr>`).join("")}</tbody></table>`
-        : `<p class="muted">None yet. Add the first one on the right.</p>`);
+        ? `<table><tbody>${d.Dependencies.map(n => `<tr data-testid="dependency-row" data-name="${esc(n)}"><td>${esc(n)}</td><td style="text-align:right"><button class="danger" data-remove="${esc(n)}" data-testid="dependency-remove">Remove</button></td></tr>`).join("")}</tbody></table>`
+        : `<p class="muted" data-testid="dependencies-empty">None yet. Add the first one on the right.</p>`);
       el.querySelectorAll("button[data-remove]").forEach(b => b.addEventListener("click", async () => {
-        if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Confirm remove"; return; }
+        if (b.dataset.armed !== "1") {
+          b.dataset.armed = "1"; b.textContent = "Confirm remove";
+          announce(`Press Confirm remove to remove ${b.dataset.remove}.`);
+          return;
+        }
         try { await api("DELETE", `/dependencies/${encodeURIComponent(b.dataset.remove)}`); ok(`Removed ${b.dataset.remove}.`); await loadList(); }
         catch (err) { fail(err); }
       }));
@@ -598,6 +656,123 @@ async function viewDependencies() {
     $("#dep-check-result").textContent = `${r.dp_name}: ${r.status}.`;
   });
   loadList();
+}
+
+// ------------------------------------------------------------------ teams
+async function viewTeams() {
+  $main.innerHTML = `
+    <div class="page-head"><h1>Teams</h1></div>
+    <p class="muted">Teams are assigned tickets, get notified and claim tickets. A new team can be used on tickets as soon as it exists.</p>
+    <div class="cols">
+      <section class="panel" id="team-list" data-testid="team-list" aria-labelledby="team-list-heading">
+        <h2 id="team-list-heading" tabindex="-1">All teams</h2><div id="team-cards"><p class="muted">Loading…</p></div>
+      </section>
+      <aside>
+        <section class="panel"><h2>Create a team</h2>
+          <form id="team-create" data-testid="team-create-form">
+            <label>Team name <span class="hint">Up to 64 characters</span>
+              <input name="Team_Name" required maxlength="64" autocomplete="off" data-testid="team-create-name"></label>
+            <button class="primary" data-testid="team-create-submit">Create team</button>
+          </form>
+        </section>
+      </aside>
+    </div>`;
+  settle("Teams");
+  const cards = $("#team-cards");
+
+  // Re-render the list, then put focus back somewhere sensible, since the element that had it is gone.
+  const load = async (focus) => {
+    cards.setAttribute("aria-busy", "true");
+    let data;
+    try {
+      data = await api("GET", "/team-members");
+    } catch (err) {
+      cards.removeAttribute("aria-busy");
+      cards.innerHTML = `<p class="muted">The teams aren't available: ${esc(err.data?.Message || err.message)}</p>`;
+      return;
+    }
+    cards.removeAttribute("aria-busy");
+    if (!data.Teams.length) {
+      cards.innerHTML = `<p class="muted" data-testid="teams-empty">No teams yet. Create the first one on the right.</p>`;
+    } else {
+      cards.innerHTML = data.Teams.map((t, i) => teamCard(t, data.Users, i)).join("");
+      wireTeamCards(cards, load);
+    }
+    if (focus) focus();
+  };
+
+  onSubmit($("#team-create"), async f => {
+    const name = f.Team_Name.value.trim();
+    const r = await api("POST", "/teams", { Team_Name: name });
+    f.reset();
+    await refreshTeams();
+    await load(() => focusTeam(r.Team_Name));
+    ok(`Created team ${r.Team_Name}.`);
+  });
+  await load();
+}
+
+function teamCard(team, users, index) {
+  const name = team.Team_Name;
+  const others = users.filter(u => !team.Members.includes(u));
+  return `<section class="team" data-testid="team-card" data-team="${esc(name)}" aria-labelledby="team-${index}">
+    <div class="team-head">
+      <h3 id="team-${index}" tabindex="-1" data-testid="team-name">${esc(name)}</h3>
+      <button type="button" class="danger" data-testid="team-remove" data-team="${esc(name)}">Remove team</button>
+    </div>
+    ${team.Members.length
+      ? `<ul class="members" aria-label="Members of ${esc(name)}">${team.Members.map(u => `
+          <li data-testid="team-member" data-user="${esc(u)}"><span>${esc(u)}</span>
+            <button type="button" data-testid="team-member-remove" data-team="${esc(name)}" data-user="${esc(u)}" aria-label="Remove ${esc(u)} from ${esc(name)}">Remove</button></li>`).join("")}</ul>`
+      : `<p class="muted" data-testid="team-no-members">No members yet.</p>`}
+    ${others.length ? `<form class="inline-form" data-testid="team-add-form" data-team="${esc(name)}">
+      <label>Add a member to ${esc(name)} <select name="User" data-testid="team-add-user">${others.map(u => `<option>${esc(u)}</option>`).join("")}</select></label>
+      <button data-testid="team-add-submit">Add member</button>
+    </form>` : `<p class="muted">Every user is a member.</p>`}
+  </section>`;
+}
+
+function teamSection(name) {
+  return [...document.querySelectorAll('[data-testid="team-card"]')].find(el => el.dataset.team === name);
+}
+function focusTeam(name) {
+  const heading = teamSection(name)?.querySelector("h3");
+  if (heading) heading.focus();
+}
+
+function wireTeamCards(root, load) {
+  root.querySelectorAll('form[data-testid="team-add-form"]').forEach(f => onSubmit(f, async () => {
+    const team = f.dataset.team, user = f.User.value;
+    await api("POST", `/teams/${encodeURIComponent(team)}/members`, { User: user });
+    await refreshTeams();
+    await load(() => (teamSection(team)?.querySelector("select") || teamSection(team)?.querySelector("h3"))?.focus());
+    ok(`Added ${user} to ${team}.`);
+  }));
+  root.querySelectorAll('button[data-testid="team-member-remove"]').forEach(b => b.addEventListener("click", async () => {
+    const { team, user } = b.dataset;
+    b.disabled = true;
+    try {
+      await api("DELETE", `/teams/${encodeURIComponent(team)}/members/${encodeURIComponent(user)}`);
+      await refreshTeams();
+      await load(() => focusTeam(team));
+      ok(`Removed ${user} from ${team}.`);
+    } catch (err) { b.disabled = false; fail(err); }
+  }));
+  root.querySelectorAll('button[data-testid="team-remove"]').forEach(b => b.addEventListener("click", async () => {
+    const team = b.dataset.team;
+    if (b.dataset.armed !== "1") {
+      b.dataset.armed = "1"; b.textContent = "Confirm remove";
+      announce(`Press Confirm remove to remove team ${team}.`);
+      return;
+    }
+    b.disabled = true;
+    try {
+      await api("DELETE", `/teams/${encodeURIComponent(team)}`);
+      await refreshTeams();
+      await load(() => $("#team-list-heading").focus());
+      ok(`Removed team ${team}.`);
+    } catch (err) { b.disabled = false; fail(err); }
+  }));
 }
 
 init();

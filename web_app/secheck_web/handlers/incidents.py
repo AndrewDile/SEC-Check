@@ -166,12 +166,14 @@ def record_decision(ctx: Context, req: Request) -> Dict[str, Any]:
         )
         notified: List[str] = []
         if body.get("Materiality") == "MATERIAL" and current.get("Materiality") != "MATERIAL":
-            ctx.core.notify(
-                steps,
-                team_names=ctx.settings.teams,
-                ticket_number=weak_ticket_id(ticket["Ticket_ID"]),
-            )
-            notified = list(ctx.settings.teams)
+            teams = ctx.core.team_list(steps)  # every team is told about a material incident
+            if teams:
+                ctx.core.notify(
+                    steps,
+                    team_names=teams,
+                    ticket_number=weak_ticket_id(ticket["Ticket_ID"]),
+                )
+            notified = list(teams)
     return {
         "Incident_ID": incident_id,
         "Status": "Decision Recorded",

@@ -5,14 +5,14 @@ stack, `/tester/` through Caddy.
 
 The tester implements the course's cross-team **tester interface**. It drives a target system
 (ours or another team's) through that system's `/test/setup`, the Core API project endpoints,
-and `/test/report`, and grades 54 ordered tests. It imports nothing from our system, so it can
+and `/test/report`, and grades 70 ordered tests. It imports nothing from our system, so it can
 point at any team's base URL. `tester/README.md` has the full detail; this page summarizes it.
 
 | File | What's in it |
 |---|---|
 | `secheck_tester/server.py` | `POST /test/setup`, `POST /test/run`, `GET /test/report` |
 | `secheck_tester/target.py` | The **only** place that knows the target's paths |
-| `secheck_tester/suite.py` | The tests, T-01 … T-54 |
+| `secheck_tester/suite.py` | The tests, T-01 … T-70 (T-55 … T-70 cover `/teams` and `/users`) |
 | `secheck_tester/judge.py` | Turns each response into pass, fail, error (with its source) or skip |
 | `secheck_tester/runner.py` | Runs the suite: time budget, aborting after repeated communication errors, fetching coverage |
 | `secheck_tester/coverage.py` | Acceptance-criteria (system) coverage, AC-01 … AC-06 |
@@ -31,7 +31,8 @@ point at any team's base URL. `tester/README.md` has the full detail; this page 
 3. **`GET /test/report?session_id=...`** returns the same stored report.
 
 The tester never calls `/reset`. Every session makes fresh Incident_IDs and dependency names
-instead. It assumes the target already has the teams `LEGAL`, `CYBER1` and `CYBER2`.
+instead, and its own team and user for the `/teams` and `/users` tests. It assumes the target
+already has the teams `LEGAL`, `CYBER1` and `CYBER2`.
 
 **Outcomes:**
 
@@ -90,6 +91,6 @@ The full table and every setting (timeouts, run budget, base path) are in `teste
 
 ## Its own tests
 
-`tester/tests/` has 30 unittest checks of the tester against the mock system: the interface,
-the fault modes, and T-41 … T-54. Run them with
+`tester/tests/` has 35 unittest checks of the tester against the mock system: the interface,
+the fault modes, and T-41 … T-70. Run them with
 `cd tester && python3 -m unittest discover -s tests`.

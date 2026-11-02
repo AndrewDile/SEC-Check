@@ -16,7 +16,18 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .target import Reply
 
-ERROR_TYPES = {"UUID_EXISTS", "UUID_DNE", "INVALID_DATA", "DP_EXISTS", "DP_DNE", "TIMEOUT"}
+ERROR_TYPES = {
+    "UUID_EXISTS",
+    "UUID_DNE",
+    "INVALID_DATA",
+    "DP_EXISTS",
+    "DP_DNE",
+    "TIMEOUT",
+    "TEAM_EXISTS",
+    "TEAM_DNE",
+    "USER_EXISTS",
+    "USER_DNE",
+}
 
 
 class Fail(Exception):

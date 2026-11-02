@@ -13,7 +13,7 @@ by changing `target_url`.
 secheck_tester/   the tester service
   server.py       POST /test/setup, POST /test/run, GET /test/report
   target.py       the ONLY place that knows the target's URLs and paths
-  suite.py        the 54 ordered tests (T-01..T-54)
+  suite.py        the 70 ordered tests (T-01..T-70)
   judge.py        response -> pass / fail / error(source) / skip
   runner.py       runs the suite, abort handling, reads code coverage
   coverage.py     acceptance-criteria coverage (component: not yet measured)
@@ -21,7 +21,7 @@ secheck_tester/   the tester service
   config.py       environment settings for unsettled pod decisions
 dev/mock_system.py  in-memory reference system for local runs (not deployed)
 tests/              unittest checks of the tester against the mock system
-                      (test_tester.py: interface and fault modes; test_ported.py: T-41..T-54 and edge cases)
+                      (test_tester.py: interface and fault modes; test_ported.py: T-41..T-70 and edge cases)
 openapi/tester.yaml OpenAPI 3.1.1 for the tester's three endpoints
 ```
 
@@ -60,7 +60,8 @@ python run_tests.py https://our-system.example.edu --tester https://our-tester.e
 
 To see failures being reported, start the mock with a fault:
 `--bug wrong-status | no-validation | crash-logs | unordered-logs | setup-fails |
-claim-steal | edit-drops-fields | log-latest-only`. `--bug ignore-session` makes
+claim-steal | edit-drops-fields | log-latest-only | members-not-stored |
+remove-used-team | no-teams-users`. `--bug ignore-session` makes
 the mock share one state across sessions, like a system that ignores
 `X-Session-ID` (the suite should still pass).
 
@@ -185,6 +186,22 @@ Coverage counts what was exercised, not what passed.
 | T-52 | An incident's description and urgency can be edited | AC-01 | T-13 |
 | T-53 | Dependency names with spaces work end to end | AC-05 | - |
 | T-54 | Error responses use the `{Error, Message}` format | AC-01, AC-02, AC-05 | - |
+| T-55 | List the teams (LIST) | AC-04 | - |
+| T-56 | Create a team (NEW) | AC-04 | - |
+| T-57 | A created team is listed and has no members | AC-04 | T-56 |
+| T-58 | Reject a duplicate team | AC-04 | T-56 |
+| T-59 | Reject GET and REMOVE of an unknown team | AC-04 | - |
+| T-60 | Reject invalid `/teams` requests | AC-04 | - |
+| T-61 | Create a user (`/users NEW`) | AC-02 | - |
+| T-62 | Reject a duplicate user and a user without `Auth_Hash` | AC-02 | T-61 |
+| T-63 | Add a user to a team (ADD_USER) | AC-04 | T-56, T-61 |
+| T-64 | A team's members are stored | AC-04 | T-63 |
+| T-65 | Reject invalid membership changes | AC-04 | T-63 |
+| T-66 | A new team can be assigned, notified and claim | AC-04 | T-56, T-01 |
+| T-67 | A team that tickets use can't be removed | AC-04 | T-66 |
+| T-68 | Remove a user from a team (REMOVE_USER) | AC-04 | T-64 |
+| T-69 | Remove an unused team and its members | AC-04 | T-61, T-01 |
+| T-70 | Remove a user (`/users REMOVE`) | AC-02 | T-61 |
 
 T-41..T-54 are ported from the Web App team's mock-Core test suite
 (`Web Dev/tests`). Only checks a client can observe through the Core API were
@@ -193,10 +210,20 @@ team queue, the gateway translation) stays in the Web App's own tests, and
 `/tickets GET` by version ID (a proposed fix for gap G-7, not in the spec)
 and the `LIST` methods (gap G-5) were left out.
 
+T-55..T-70 test the `/teams` and `/users` paths. Each run creates its own team
+(`Tester team <random>`) and user (`tester-<random>`), so runs don't collide
+even on a system that ignores `X-Session-ID`. Besides the spec's methods they use
+`/teams GET` (with `Members`) and `LIST`, from the shared data schema. Two
+checks follow the pod's Core API where the spec doesn't say: a team that
+tickets refer to can't be removed (T-67, `INVALID_DATA`), and removing a team
+removes its memberships (T-69).
+
 Expected values come from the spec examples: Status strings `Created` /
 `Edited` / `Data Fetched` / `Logged` / `Displayed` / `Log Retrieved` /
-`Notified team` / `Claimed ticket` / `Added` / `Exists` / `Removed`, and
-errors `UUID_EXISTS`, `UUID_DNE`, `INVALID_DATA`, `DP_EXISTS`, `DP_DNE`.
+`Notified team` / `Claimed ticket` / `Added` / `Exists` / `Removed` /
+`Teams Listed` / `Team Received` / `User added` / `User removed`, and errors
+`UUID_EXISTS`, `UUID_DNE`, `INVALID_DATA`, `DP_EXISTS`, `DP_DNE`, `TEAM_EXISTS`,
+`TEAM_DNE`, `USER_EXISTS`, `USER_DNE`.
 
 ## Where the spec is ambiguous, and what the tester does
 
@@ -218,7 +245,7 @@ spec allows.
 | Error type for an unknown ticket in `/notifier` | `UUID_DNE` or `INVALID_DATA` | - |
 | Ticket number from another incident, or one that doesn't exist (T-45, T-46) | `UUID_DNE` or `INVALID_DATA` | - |
 | Re-claim by the team that already holds the ticket | Not tested; only a claim by a *different* team must be rejected (T-41) | - |
-| Team names (the Core API has no path to create teams) | Uses `LEGAL, CYBER1, CYBER2` in ticket and notifier calls; the target must already have teams with these names | `TESTER_TEAMS` |
+| Default team names | Uses `LEGAL, CYBER1, CYBER2` in ticket and notifier calls, and T-55 checks `/teams LIST` has them; the target must start each session with these teams | `TESTER_TEAMS` |
 | Target clock skew | Timestamps are 60 s behind the tester's clock and strictly increasing | - |
 
 ## Settings and time limits
