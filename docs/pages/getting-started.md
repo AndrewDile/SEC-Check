@@ -65,7 +65,7 @@ Compose sets them itself.
 |---|---|
 | `./lint.sh` | ruff on the Python services; `tsc` and Biome on the API. `--fix` fixes what it can |
 | `./format.sh` | Formats everything. `--check` only reports |
-| `./test.sh` | Starts the stack and runs every test suite. **Wipes the local database.** See [Testing](testing.md) |
+| `./test.sh` | Runs every test suite against a throwaway stack, then removes it. Doesn't touch your dev stack. See [Testing](testing.md) |
 | `./docs.sh` | Serves these docs at `http://127.0.0.1:8008`, reloading on save. `./docs.sh build` checks links the way CI does |
 
 Run `(cd api && npm install)` once before the first lint or format.

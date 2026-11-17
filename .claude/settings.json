@@ -1,8 +1,6 @@
 {
   "permissions": {
-    "deny": ["Read(./.env)"],
     "ask": [
-      "Bash(./test.sh:*)",
       "Bash(./deploy.sh:*)",
       "Bash(git push:*)",
       "Bash(docker compose down:*)"

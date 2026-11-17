@@ -2,7 +2,7 @@ services:
   caddy:   # the only public port; see Caddyfile for which path goes where
     image: caddy:2.10
     ports:
-      - "80:80"
+      - "${HTTP_PORT:-80}:80"   # ./test.sh moves it, so it can run next to a dev stack
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -69,7 +69,7 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "127.0.0.1:3306:3306"   # local tools only, never public
+      - "127.0.0.1:${DB_HOST_PORT:-3306}:3306"   # local tools only, never public
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:   # TCP, so it only passes once init scripts are done

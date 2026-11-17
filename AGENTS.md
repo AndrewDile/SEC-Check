@@ -34,8 +34,10 @@ with `cd api && npm install` done once.
 docker compose up --build
 ```
 
-`./test.sh` runs every suite against a local stack, as CI does. It **wipes the local database**,
-so ask before running it.
+`./test.sh` runs every suite against a throwaway stack, as CI does: its own compose project
+(`sec-check-test`), a fresh database, `.env.example`'s settings, and ports 18080 and 13306. It
+removes the stack when it finishes, even after a failure, and doesn't touch the dev stack. It
+takes a few minutes, so ask before running it.
 
 CI (`.github/workflows/ci.yml`) runs lint, format and `./verify.sh`, then tests, on every push
 and PR. **Every push to `main` deploys to production (EC2)**, so work on a branch and open a PR.
