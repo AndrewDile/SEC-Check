@@ -32,7 +32,7 @@ class Settings:
     dependencies_path: str = "/dependencies"
     teams: List[str] = field(
         default_factory=lambda: list(DEFAULT_TEAMS)
-    )  # team names the tests use
+    )  # team names the tests create (/teams NEW) and use
 
     ENV = {
         "TESTER_HOST": ("host", str),

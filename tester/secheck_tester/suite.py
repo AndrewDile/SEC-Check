@@ -839,11 +839,11 @@ def t58(ctx: Context):
     return "NEW with an existing name rejected with TEAM_EXISTS."
 
 
-@test("T-59", "Reject GET and REMOVE of an unknown team", ("AC-04",))
+@test("T-59", "Reject GET and DELETE of an unknown team", ("AC-04",))
 def t59(ctx: Context):
     name = ctx.team_name("never-created")
     expect_error(ctx.team("GET", name), "TEAM_DNE")
-    expect_error(ctx.team("REMOVE", name), "TEAM_DNE")
+    expect_error(ctx.team("DELETE", name), "TEAM_DNE")
     return "Unknown team rejected with TEAM_DNE."
 
 
@@ -920,9 +920,9 @@ def t66(ctx: Context):
 @test("T-67", "A team that tickets use can't be removed", ("AC-04",), after=("T-66",))
 def t67(ctx: Context):
     team = ctx.team_name("main")
-    expect_error(ctx.team("REMOVE", team), "INVALID_DATA")
+    expect_error(ctx.team("DELETE", team), "INVALID_DATA")
     expect_ok(ctx.team("GET", team), "Team Received")
-    return "REMOVE of %r rejected; the team is still there." % team
+    return "DELETE of %r rejected; the team is still there." % team
 
 
 @test("T-68", "Remove a user from a team (REMOVE_USER)", ("AC-04",), after=("T-64",), db=True)
@@ -941,7 +941,7 @@ def t69(ctx: Context):
     team, user = ctx.team_name("spare"), ctx.username("main")
     expect_ok(ctx.team("NEW", team), "Created")
     expect_ok(ctx.team("ADD_USER", team, Username=user), "User added")
-    body = expect_ok(ctx.team("REMOVE", team), "Removed")
+    body = expect_ok(ctx.team("DELETE", team), "Removed")
     expect_field(body, "Team_Name", team)
     expect_error(ctx.team("GET", team), "TEAM_DNE")
     teams = field(expect_ok(ctx.team("LIST"), "Teams Listed"), "Team_List")
