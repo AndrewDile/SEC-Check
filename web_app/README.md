@@ -71,7 +71,7 @@ Useful URLs:
 The **Teams** page creates and removes teams and adds or removes members.
 
 - **Teams** live in the Core API (`/teams`): the web app reads them with `LIST` and creates or
-  removes them with `NEW`/`REMOVE`. Tickets, notifications, claims and queues accept only
+  removes them with `NEW`/`DELETE`. Tickets, notifications, claims and queues accept only
   existing teams. A team that tickets use can't be removed.
 - **Members** are stored in the database too (`secheck_web/membership.py`): the web app adds and
   removes them with `/teams` `ADD_USER`/`REMOVE_USER`, reads a team's with `/teams` `GET`

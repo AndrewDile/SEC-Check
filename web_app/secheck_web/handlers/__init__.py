@@ -96,7 +96,9 @@ def require_known_teams(ctx: Context, names: List[str], field_name: str) -> None
 
 
 def require_ticket_of_incident(incident_id: str, ticket_number: str) -> None:
-    if not ticket_number.startswith(f"{incident_id}_"):
+    """The weak ticket number is the Incident_ID, '_', then digits (the ID may contain '_')."""
+    prefix = f"{incident_id}_"
+    if not ticket_number.startswith(prefix) or not ticket_number[len(prefix) :].isdigit():
         raise invalid(
             f"Ticket_number {ticket_number} does not belong to Incident_ID {incident_id}."
         )
