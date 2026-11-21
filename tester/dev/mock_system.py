@@ -14,7 +14,6 @@ Bugs, for seeing how the tester reports a faulty system:
   crash-logs      /logs answers 500
   unordered-logs  /logs lists tickets newest first
   setup-fails     /test/setup answers 500
-  claim-steal        any team can claim a ticket another team already holds
   edit-drops-fields  a ticket EDIT resets severity, urgency and teams it didn't send
   log-latest-only    /logs lists only the latest version of each ticket
   ignore-session     one shared state for every session (X-Session-ID ignored); not a bug
@@ -41,7 +40,6 @@ BUGS = (
     "crash-logs",
     "unordered-logs",
     "setup-fails",
-    "claim-steal",
     "edit-drops-fields",
     "log-latest-only",
     "ignore-session",
@@ -388,11 +386,7 @@ class MockSystem:
         if method == "CLAIM":
             if len(teams) != 1:
                 invalid("CLAIM takes exactly one team.")
-            if (
-                ticket["claimed_by"]
-                and ticket["claimed_by"] != teams[0]
-                and self.bug != "claim-steal"
-            ):
+            if ticket["claimed_by"] and ticket["claimed_by"] != teams[0]:
                 invalid("Ticket is already claimed by %s." % ticket["claimed_by"])
             ticket["claimed_by"] = teams[0]
             status = "Claimed ticket"
