@@ -37,6 +37,14 @@ TIMEOUT_MS = float(os.environ.get("UI_TIMEOUT_MS", "10000"))
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
+# A reset leaves no teams. The tests are written around these, which setUp creates after each
+# reset: team -> members, in the order they're created.
+TEAM_FIXTURE = {
+    "LEGAL": ["carol", "core-gateway", "dana"],
+    "CYBER1": ["alice", "core-gateway", "dana"],
+    "CYBER2": ["bob", "core-gateway"],
+}
+
 expect.set_options(timeout=TIMEOUT_MS)
 
 
@@ -68,6 +76,13 @@ class Core:
     def reset(self) -> None:
         self.ok("/reset", {"method": "RESET"})
 
+    def create_teams(self) -> None:
+        """Create TEAM_FIXTURE's teams and members (after a reset, which leaves none)."""
+        for team, users in TEAM_FIXTURE.items():
+            self.ok("/teams", {"Team_Name": team, "Method": "NEW"})
+            for user in users:
+                self.ok("/teams", {"Team_Name": team, "Method": "ADD_USER", "Username": user})
+
     # Reads used to check that the UI really stored something
     def incident(self, incident_id: str) -> Dict[str, Any]:
         return self.ok(
@@ -93,7 +108,12 @@ class Core:
         return self.ok("/logs", {"Incident_ID": incident_id, "Timestamp": now()})["Ticket_ID_List"]
 
     def dependency_exists(self, name: str) -> bool:
-        return self.ok("/dependencies", {"dp_name": name, "method": "MATCH"})["status"] == "Exists"
+        status, data = self.post("/dependencies", {"dp_name": name, "method": "MATCH"})
+        if status == 400 and data.get("Error") == "DP_DNE":
+            return False
+        if status != 200:
+            raise AssertionError("Core API /dependencies answered %s: %s" % (status, data))
+        return data["status"] == "Exists"
 
 
 def now() -> str:
@@ -142,7 +162,8 @@ class UITestCase(unittest.TestCase):
         cls._pw.stop()
 
     def setUp(self):
-        self.core.reset()  # also puts back the default teams and memberships
+        self.core.reset()
+        self.core.create_teams()
         self.context = self._browser.new_context(base_url=WEB_URL)
         self.context.set_default_timeout(TIMEOUT_MS)
         self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
