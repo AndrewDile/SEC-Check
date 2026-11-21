@@ -70,7 +70,7 @@ components:
 
     Confidence:
       type: string
-      enum: [high, medium]
+      enum: [high, medium, low]
 
     MatchedDependency:
       description: One of the company's dependencies that an incident may affect, and why we think so.
@@ -125,6 +125,12 @@ components:
           type: object
           default: {}
           description: Source-specific extras.
+        backfill:
+          type: boolean
+          default: false
+          description: |
+            Found by a catch-up over events older than the worker's lookback, after a dependency
+            was added. The Core API records it without notifying anyone.
 
     Incident:
       description: An incident as the Core API stores it.
@@ -159,7 +165,9 @@ components:
       properties:
         notification_id:
           type: string
-          description: Repeating an ID is a no-op, so the Core API can safely retry.
+          description: |
+            Repeating an ID is a no-op, so the Core API can safely retry. It is the incident's ID,
+            followed by `:deps:<hash>` for a notice about newly matched dependencies.
         incident: { $ref: "#/components/schemas/Incident" }
         claim_url:
           type: string
@@ -168,6 +176,13 @@ components:
         recipients:
           type: array
           items: { $ref: "#/components/schemas/Recipient" }
+        added_dependency_ids:
+          type: array
+          items: { type: string }
+          default: []
+          description: |
+            Set when this notice is about dependencies newly matched to an existing incident.
+            Empty for a new incident.
 
     DeliveryStatus:
       type: string

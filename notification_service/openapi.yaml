@@ -18,7 +18,8 @@ paths:
       operationId: sendNotification
       summary: Hand over a notification
       description: |
-        The Core API calls this whenever it creates an incident, and retries until it gets
+        The Core API calls this when it creates an incident or adds newly matched dependencies to
+        one, and retries until it gets
         `202`, which is safe because repeating a `notification_id` is a no-op. The
         notification service answers right away, delivers afterwards, and then reports the
         results to the Core API (`reportNotificationResults`).

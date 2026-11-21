@@ -207,7 +207,7 @@ report stay. A restart ends every open session.
 |---|---|---|
 | `GET /ingest/dependencies` | `INGEST_CORE_API_TOKEN` | Every dependency, as the worker's `Dependency` |
 | `POST /ingest/incidents` | `INGEST_CORE_API_TOKEN` | See below |
-| `POST /notif/notifications/{id}/results` | `NOTIF_CORE_API_TOKEN` | Stores the delivery results as a `NOTIFICATION_RESULTS` audit entry. 404 if `{id}` isn't an ingested incident |
+| `POST /notif/notifications/{id}/results` | `NOTIF_CORE_API_TOKEN` | Stores the delivery results as a `NOTIFICATION_RESULTS` audit entry. An update notice's ID is `<incident>:deps:<hash>`. 404 if the incident isn't an ingested one |
 
 The token also sets the audit log's actor: `ingestion-worker` or `notification-service`.
 
@@ -215,7 +215,9 @@ The token also sets the audit log's actor: `ingestion-worker` or `notification-s
 
 1. It checks that `source`, `external_id`, `title`, `summary`, `source_url` and `detected_at`
    are strings.
-2. A repeat `(source, external_id)` returns 200 with the stored payload, and nothing else
+2. A repeat `(source, external_id)` returns 200 with the stored payload, after adding any
+   dependencies it doesn't list yet (`INCIDENT_MATCHES_ADDED`) and notifying the teams of them
+   unless `backfill` is set. The rest of the payload stays as first reported, and nothing else
    happens.
 3. Otherwise it creates an incident with a random 12-digit ID. A collision is retried up to 5
    times.

@@ -11,6 +11,8 @@ decision notices, which are only database records (see [Architecture](../archite
 
 1. **Accept:** the Core API sends `POST /notifications` with a `NotificationRequest`. The service
    answers `202` right away.
+    - **Updates:** a notice with `added_dependency_ids` is about newly matched dependencies on
+      an existing incident. Its subject starts with `Update:` and its body names them first.
     - **Retries:** a `notification_id` it has already accepted is a no-op, so the Core API can
       retry safely.
     - **Delivery:** happens after the response, as a FastAPI background task.

@@ -9,6 +9,7 @@ ingestion_worker/       Polls CISA KEV and SEC EDGAR for incidents (Python)
 notification_service/   Notifies teams of new incidents (Python)
 tester/                 Cross-team tester (Python)
 db/migrations/          MySQL schema, applied when the database volume is created
+architecture/           System model, and the checks that verify the repo against it
 docs/                   Developer docs (MkDocs), served at /docs/
 ```
 
@@ -59,11 +60,13 @@ Python services use [ruff](https://docs.astral.sh/ruff/) (needs [uv](https://doc
 
 ## Tests
 
-`./test.sh` starts the stack (without the ingestion worker and notifier), then runs the tester's own tests,
-the API and database tests (`api/test/`), and the 54-test cross-team suite against our system. It **wipes the
+`./test.sh` starts the stack (without the ingestion worker and notifier), then runs the tester, worker and notifier unit tests,
+the API and database tests (`api/test/`), and the cross-team suite, then the worker and notifier end-to-end tests against mock feeds. It **wipes the
 local database**. CI runs it after lint and format pass, and deploys `main` only if it passes.
 
 ## Adding a container
 
-Put your part in its own folder with a `Dockerfile`, then add a service to `docker-compose.yml`.
-Containers reach each other by service name, e.g. `http://api:3001`.
+Put your part in its own folder with a `Dockerfile`, then add it to `architecture/model.yaml` with the
+containers it talks to. Then add a service to `docker-compose.yml`, with a network for each of those
+connections: containers reach each other by service name (e.g. `http://api:3001`), but only over a
+network they share. `./verify.sh` (and so CI) fails until the compose file matches the model.

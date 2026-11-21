@@ -52,5 +52,6 @@ nav:
       - Notification service: services/notification-service.md
       - Tester: services/tester.md
   - Testing: testing.md
+  - Architecture verification: verification.md
   - Deployment and operations: operations.md
   - Known limitations: limitations.md

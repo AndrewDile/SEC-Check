@@ -79,7 +79,7 @@ erDiagram
 
 | Table | Key | Notes |
 |---|---|---|
-| `incidents` | `(scope_id, incident_id)` | `UNIQUE (scope_id, source, external_id)` deduplicates ingested incidents. `ingest_json` is the worker's payload, returned on a repeat report. `material_at` and `filing_deadline` are set at the first `MATERIAL` determination |
+| `incidents` | `(scope_id, incident_id)` | `UNIQUE (scope_id, source, external_id)` deduplicates ingested incidents. `ingest_json` is the worker's payload, returned on a repeat report, which also adds any newly matched dependencies to it. `material_at` and `filing_deadline` are set at the first `MATERIAL` determination |
 | `ticket_versions` | `(scope_id, incident_id, ticket_number, version)` | Append-only (triggers block `UPDATE` and `DELETE`) |
 | `ticket_version_teams` | `(scope_id, incident_id, ticket_number, version, team_name)` | The team list of each version. Append-only |
 | `ticket_claims` | `claim_id` | Claim history. Append-only |
@@ -107,7 +107,7 @@ Every Core API database method writes an entry in the same transaction as the ch
 **including reads** (`INCIDENT_READ`, `TICKET_READ`, `LOG_READ`). A `LIST` on `/incidents` or
 `/tickets` writes one entry per call, not per row. The event types are:
 
-- **Incidents:** `INCIDENT_CREATED`, `INCIDENT_EDITED`, `MATERIALITY_REVERSED`, `INCIDENT_READ`,
+- **Incidents:** `INCIDENT_CREATED`, `INCIDENT_EDITED`, `INCIDENT_MATCHES_ADDED`, `MATERIALITY_REVERSED`, `INCIDENT_READ`,
   `INCIDENTS_LISTED`. Edits record `before` and `after` for the changed fields, and the `note`
   when one was given.
 - **Tickets:** `TICKET_CREATED`, `TICKET_EDITED`, `TICKET_READ`, `TICKET_CLAIMED`,
@@ -146,14 +146,15 @@ re-hashes a scope's chain and reports the first broken `seq`; no endpoint calls 
 
 The ingestion worker and notification service each define the payloads they exchange with the
 Core API in their own `core_api.openapi.yaml`. Their Pydantic models (`models.py`) are generated
-from it by `generate_models.sh`, so don't edit `models.py` by hand. The main shapes are:
+from it by `generate_models.sh`, so don't edit `models.py` by hand: `./verify.sh` fails if it
+doesn't match its spec, and `./verify.sh --fix generated` regenerates it. The main shapes are:
 
 | Schema | Fields | Meaning |
 |---|---|---|
 | `Dependency` | `id`, `company_id`, `vendor`, `product`, `version?`, `cpe?`, `purl?`, `vendor_cik?` | The worker's view of a dependency |
-| `IncidentCreate` | `company_id`, `source`, `external_id`, `title`, `summary`, `source_url`, `published_at`, `detected_at`, `priority_hint`, `matched_dependencies[]`, `details` | A possible incident found by the worker |
+| `IncidentCreate` | `company_id`, `source`, `external_id`, `title`, `summary`, `source_url`, `published_at`, `detected_at`, `priority_hint`, `matched_dependencies[]`, `details`, `backfill` | A possible incident found by the worker |
 | `MatchedDependency` | `dependency_id`, `vendor`, `product`, `version?`, `confidence`, `reason` | Why the worker thinks a dependency is affected |
-| `NotificationRequest` | `notification_id`, `incident`, `claim_url`, `recipients[]` | What the Core API hands the notifier |
+| `NotificationRequest` | `notification_id`, `incident`, `claim_url`, `recipients[]`, `added_dependency_ids[]` | What the Core API hands the notifier |
 | `Recipient` | `recipient_id`, `team_name`, `channel`, `address` | One team member at their contact, or a team with no members in the log |
 | `DeliveryResult` | `recipient_id`, `status`, `attempts`, `error?`, `delivered_at?` | What the notifier reports back. `status` is `delivered` or `failed` |
 
@@ -161,7 +162,7 @@ The enums are:
 
 - `source`: `cisa_kev` or `sec_edgar_8k`
 - `priority_hint`: `critical`, `high`, `medium` or `low`
-- `confidence`: `high` or `medium`
+- `confidence`: `high`, `medium` or `low`
 
 ### Mapping a dependency name for the worker
 

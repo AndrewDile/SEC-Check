@@ -1,11 +1,13 @@
 #!/bin/sh
 # Regenerate models.py from core_api.openapi.yaml, which defines the payloads of every API
-# this service calls or serves. Run it after changing that file.
+# this service calls or serves. Run it after changing that file, or run ./verify.sh --fix.
+# Usage: generate_models.sh [OUTPUT]. ./verify.sh writes to a temporary OUTPUT to check that
+# models.py is current.
 set -e
 cd "$(dirname "$0")"
 uvx --from 'datamodel-code-generator[ruff]==0.84.0' datamodel-codegen \
     --input core_api.openapi.yaml \
-    --output models.py \
+    --output "${1:-models.py}" \
     --input-file-type openapi \
     --output-model-type pydantic_v2.BaseModel \
     --target-python-version 3.12 \
