@@ -46,8 +46,9 @@ state; see [Known limitations](limitations.md).
 to 255 characters). It is `MANUAL` when added through the API. The schema allows `AUTO`, but
 nothing sets it yet.
 
-**Team.** `LEGAL`, `CYBER1` and `CYBER2` are created by the migration and restored by every
-reset. `/teams` adds and removes teams and their members.
+**Team.** Created with `/teams NEW`; a reset or a new test session has none. `/teams` adds and
+removes teams and their members. (The first migrations still create `LEGAL`, `CYBER1` and
+`CYBER2`, so a brand-new database has them until its first reset.)
 
 **User.** Someone who can act through the Core API (the `X-User` header), with a contact channel
 and address for notifications. The defaults are the web app's development users (`alice`, `bob`,
@@ -84,7 +85,7 @@ erDiagram
 | `ticket_claims` | `claim_id` | Claim history. Append-only |
 | `notifications` | `notification_id` | One row per team per `NOTIFY` |
 | `dependencies` | `(scope_id, dp_name)` | `source` is `MANUAL` or `AUTO` |
-| `teams` | `(scope_id, team_name)` | Seeded with the three default teams |
+| `teams` | `(scope_id, team_name)` | Created through `/teams`; empty after a reset |
 | `users` | `(scope_id, username)` | `contact_channel` (default `log`) and `contact_address` (the contract's `Contact`) say where notifications go. `auth_hash` is the scrypt of the client's `Auth_Hash`, never returned |
 | `team_members` | `(scope_id, team_name, username)` | Who is on which team |
 | `audit_log` | `(scope_id, seq)` | Append-only and hash-chained, one chain per scope |
@@ -138,7 +139,7 @@ writers queue up. Triggers block `UPDATE` on `audit_log`. They block `DELETE` to
 connection has set `@seccheck_purge`, which only `/reset` and the purge of ended test sessions
 do.
 
-`/logs` returns an incident's audit entries as `Audit_Log`. `MySqlDb.verifyAuditChain()`
+`/logs` returns an incident's audit entries as `Audit_Entries`. `MySqlDb.verifyAuditChain()`
 re-hashes a scope's chain and reports the first broken `seq`; no endpoint calls it yet.
 
 ## Payloads between services

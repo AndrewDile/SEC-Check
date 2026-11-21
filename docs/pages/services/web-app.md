@@ -74,7 +74,7 @@ session cookie is shared.
 | `GET /dependencies` | yes | Every dependency (uses Core `LIST`) |
 | `GET /team-members` | yes | Every team with its members, and the users who can join |
 | `POST /teams` | yes | Create a team: `{"Team_Name"}` (Core `/teams NEW`) |
-| `DELETE /teams/{Team_Name}` | yes | Remove a team (Core `/teams REMOVE`) and its memberships |
+| `DELETE /teams/{Team_Name}` | yes | Remove a team (Core `/teams DELETE`) and its memberships |
 | `POST /teams/{Team_Name}/members` | yes | Add a user: `{"User"}`. `TEAM_DNE`, `USER_DNE`, or `INVALID_DATA` if already a member |
 | `DELETE /teams/{Team_Name}/members/{User}` | yes | Remove a user from a team |
 | `GET /incidents/{id}/log/entries` | yes | Every ticket version, with its details |
@@ -136,7 +136,7 @@ specs. Each one is handled in `core_client.py`, so handlers see only Web App fie
 
 | Gap | What the code does |
 |---|---|
-| G-1 | The Incident_ID format is unclear; it generates 12-digit numbers |
+| G-1 | The Incident_ID format is unclear. It accepts what the Core API does (any 1-64 characters, `_` included) and generates 12-digit numbers |
 | G-2 | The spec spells it `/dependencies` and `/dependancies`; it uses `/dependencies` |
 | G-3 | Core says `Dependency`, the Web App says `Dependency_Name`; it maps between them |
 | G-4 | Core ticket `EDIT` can't say which ticket; it sends `Ticket_number` |

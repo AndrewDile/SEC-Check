@@ -38,11 +38,18 @@ const newTicket = (id = ID, extra = {}, headers: Headers = {}) =>
     headers,
   );
 const auditLog = async (headers: Headers = {}) =>
-  (await post('/logs', { Incident_ID: ID, Timestamp: TS }, headers)).body.Audit_Log as {
+  (await post('/logs', { Incident_ID: ID, Timestamp: TS }, headers)).body.Audit_Entries as {
     Event: string;
     Actor: string;
     Details: Record<string, unknown>;
   }[];
+
+// A reset leaves no teams, so every test starts by creating the ones the tests use
+const TEAMS = ['LEGAL', 'CYBER1', 'CYBER2'];
+async function createTeams(names = TEAMS, headers: Headers = {}) {
+  for (const name of names)
+    expect((await post('/teams', { Team_Name: name, Method: 'NEW' }, headers)).status).toBe(200);
+}
 
 function expectError(r: { status: number; body: { Error?: string } }, error: string) {
   expect(r.status).toBe(400);
@@ -52,6 +59,7 @@ function expectError(r: { status: number; body: { Error?: string } }, error: str
 describe.skipIf(!API)('Core API pod contract', () => {
   beforeEach(async () => {
     expect((await post('/reset', { method: 'RESET' })).body).toEqual({ status: 'DB Wiped' });
+    await createTeams();
   });
 
   describe('/reset', () => {
@@ -393,9 +401,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expect((await post('/dependencies', { dp_name: 'auth-service-v2', method: 'REMOVE' })).body.status).toBe(
         'Removed',
       );
-      expect((await post('/dependencies', { dp_name: 'auth-service-v2', method: 'MATCH' })).body.status).toBe(
-        'Does not Exist',
-      );
+      expectError(await post('/dependencies', { dp_name: 'auth-service-v2', method: 'MATCH' }), 'DP_DNE');
       expectError(await post('/dependencies', { dp_name: 'auth-service-v2', method: 'REMOVE' }), 'DP_DNE');
     });
 
@@ -409,11 +415,9 @@ describe.skipIf(!API)('Core API pod contract', () => {
     const names = async () => (await teams({ Method: 'LIST' })).body.Team_List;
     const members = async (team: string) => [...(await teams({ Team_Name: team, Method: 'GET' })).body.Members].sort();
 
-    it('starts with the default teams after a reset', async () => {
-      expect((await teams({ Method: 'LIST' })).body).toEqual({
-        Team_List: ['LEGAL', 'CYBER1', 'CYBER2'],
-        Status: 'Teams Listed',
-      });
+    it('starts with no teams after a reset', async () => {
+      await post('/reset', { method: 'RESET' });
+      expect((await teams({ Method: 'LIST' })).body).toEqual({ Team_List: [], Status: 'Teams Listed' });
     });
 
     it('creates, fetches and removes a team', async () => {
@@ -427,7 +431,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
         Status: 'Team Received',
       });
       expect(await names()).toContain('Red Team');
-      expect((await teams({ Team_Name: 'Red Team', Method: 'REMOVE' })).body).toEqual({
+      expect((await teams({ Team_Name: 'Red Team', Method: 'DELETE' })).body).toEqual({
         Team_Name: 'Red Team',
         Status: 'Removed',
       });
@@ -437,15 +441,15 @@ describe.skipIf(!API)('Core API pod contract', () => {
     it('rejects duplicates, unknown teams and bad input', async () => {
       expectError(await teams({ Team_Name: 'LEGAL', Method: 'NEW' }), 'TEAM_EXISTS');
       expectError(await teams({ Team_Name: 'GHOST', Method: 'GET' }), 'TEAM_DNE');
-      expectError(await teams({ Team_Name: 'GHOST', Method: 'REMOVE' }), 'TEAM_DNE');
+      expectError(await teams({ Team_Name: 'GHOST', Method: 'DELETE' }), 'TEAM_DNE');
       expectError(await teams({ Team_Name: ' padded', Method: 'NEW' }), 'INVALID_DATA');
       expectError(await teams({ Team_Name: '', Method: 'NEW' }), 'INVALID_DATA');
       expectError(await teams({ Team_Name: 'X', Method: 'RENAME' }), 'INVALID_DATA');
       expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER' }), 'INVALID_DATA');
     });
 
-    it('starts with the default members, and adds and removes them', async () => {
-      expect(await members('LEGAL')).toEqual(['carol', 'core-gateway', 'dana']);
+    it('starts a team with no members, and adds and removes them', async () => {
+      expect(await members('LEGAL')).toEqual([]);
       expect((await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'alice' })).body).toEqual({
         Team_Name: 'LEGAL',
         Username: 'alice',
@@ -459,15 +463,17 @@ describe.skipIf(!API)('Core API pod contract', () => {
     });
 
     it('rejects adding a member twice, removing a non-member, and unknown users or teams (v1.0.2)', async () => {
+      await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'carol' });
       expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'carol' }), 'USER_EXISTS');
       expectError(await teams({ Team_Name: 'LEGAL', Method: 'REMOVE_USER', Username: 'alice' }), 'USER_DNE');
       expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER', Username: 'mallory' }), 'USER_DNE');
       expectError(await teams({ Team_Name: 'GHOST', Method: 'ADD_USER', Username: 'alice' }), 'TEAM_DNE');
     });
 
-    it('also takes DELETE for REMOVE', async () => {
+    it('removes with DELETE, not REMOVE', async () => {
       await teams({ Team_Name: 'Red Team', Method: 'NEW' });
-      expect((await teams({ Team_Name: 'Red Team', Method: 'DELETE' })).body.Status).toBe('Removed');
+      expectError(await teams({ Team_Name: 'Red Team', Method: 'REMOVE' }), 'INVALID_DATA');
+      expect(await names()).toContain('Red Team');
     });
 
     it('lets tickets and the notifier use only existing teams', async () => {
@@ -485,7 +491,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
       await teams({ Team_Name: 'Red Team', Method: 'NEW' });
       await newIncident();
       await newTicket(undefined, { Team_list: ['Red Team'] });
-      expectError(await teams({ Team_Name: 'Red Team', Method: 'REMOVE' }), 'INVALID_DATA');
+      expectError(await teams({ Team_Name: 'Red Team', Method: 'DELETE' }), 'INVALID_DATA');
       expect(await names()).toContain('Red Team');
     });
   });
@@ -493,9 +499,11 @@ describe.skipIf(!API)('Core API pod contract', () => {
   describe('/users', () => {
     const users = (body: Record<string, unknown>) => post('/users', body);
 
-    it('starts with the default users', async () => {
-      const list = (await users({ Method: 'LIST' })).body.Users.map((u: { Username: string }) => u.Username);
-      expect(list.sort()).toEqual(['alice', 'bob', 'carol', 'core-gateway', 'dana']);
+    it('starts with the default users, in no teams, after a reset', async () => {
+      await post('/reset', { method: 'RESET' });
+      const list = (await users({ Method: 'LIST' })).body.Users as { Username: string; Teams: string[] }[];
+      expect(list.map((u) => u.Username).sort()).toEqual(['alice', 'bob', 'carol', 'core-gateway', 'dana']);
+      expect(list.every((u) => u.Teams.length === 0)).toBe(true);
     });
 
     it('creates, edits, fetches and removes a user', async () => {
@@ -566,11 +574,12 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expect((await setup(b)).status).toBe(201);
 
       expectError(await getIncident(ID, as(a)), 'UUID_DNE');
-      expect((await post('/dependencies', { dp_name: 'okta', method: 'MATCH' }, as(a))).body.status).toBe(
-        'Does not Exist',
-      );
+      expectError(await post('/dependencies', { dp_name: 'okta', method: 'MATCH' }, as(a)), 'DP_DNE');
       expect((await newIncident(undefined, {}, as(a))).status).toBe(200);
       expect((await newIncident(undefined, {}, as(b))).status).toBe(200);
+      // a session starts with no teams, like a reset
+      expect((await post('/teams', { Method: 'LIST' }, as(a))).body.Team_List).toEqual([]);
+      await createTeams(['CYBER2'], as(a));
       expect((await newTicket(undefined, { Team_list: ['CYBER2'] }, as(a))).body.Ticket_ID).toBe(`${ID}_1_1`);
       expect((await post('/reset', { method: 'RESET' }, as(b))).status).toBe(200);
       expectError(await getIncident(ID, as(b)), 'UUID_DNE');
@@ -674,7 +683,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
         Dependency: 'Acme:Widget',
         Materiality: 'UNDECIDED',
       });
-      const log = (await post('/logs', { Incident_ID: created.id, Timestamp: TS })).body.Audit_Log;
+      const log = (await post('/logs', { Incident_ID: created.id, Timestamp: TS })).body.Audit_Entries;
       expect(log[0]).toMatchObject({ Event: 'INCIDENT_CREATED', Actor: 'ingestion-worker' });
     });
   });
