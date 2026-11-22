@@ -47,6 +47,8 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
   created has no recipients and isn't sent again later.
 - **Email needs an SMTP account.** Until `SMTP_HOST` and `SMTP_FROM` are set, email notices are
   reported as `failed`. A team without contacts still only gets a line in the notifier's log.
+- **The mail server's certificate isn't checked.** Email is encrypted, but `smtplib` doesn't verify the server by
+  default, so someone intercepting the connection could read `SMTP_PASSWORD`.
 - **Teams' webhook hosts are assumed.** The Core API and notifier accept Workflows webhooks on
   `*.logic.azure.com` and `*.api.powerplatform.com`. Check a real Workflows URL against these.
 - **Slack's and Teams' rate limits aren't respected.** A `429` is retried on the usual schedule
@@ -80,8 +82,8 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 ## Testing
 
 - **Missing tests.** The worker's feed parsers and the notifier's `log` channel and result report have none.
-  The email, Slack and Teams channels are only tested against fakes, never the real services. The web app's
-  tests aren't in this repo.
+  Slack and Teams are only tested against fakes in unit tests. Email is also tested end to end, against Mailpit
+  without encryption. Nothing tests the real services. The web app's tests aren't in this repo.
 - **Code coverage is shared between overlapping sessions.** V8 can't tell which request ran a
   line, so sessions running at the same time count each other's lines (`basis` names them).
   Component coverage isn't measured.

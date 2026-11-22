@@ -1,7 +1,8 @@
 """End to end: a dependency added through the Core API, through the real worker and notifier
-containers, to incidents in the database and delivered notices. WIPES the real data.
+containers, to incidents in the database and delivered notices, including email that reaches a mail
+server (Mailpit). WIPES the real data.
 
-Runs only when E2E_SYSTEM_URL is set, against docker-compose.e2e.yml, which points the worker at
+Runs only when E2E_SYSTEM_URL and E2E_MAILPIT_URL are set, against docker-compose.e2e.yml, which points the worker at
 mock_feeds.py and polls only hourly. So anything seen here within seconds came from the catch-up.
 """
 
@@ -13,6 +14,7 @@ import urllib.request
 from datetime import UTC, datetime, timedelta
 
 SYSTEM = os.environ.get("E2E_SYSTEM_URL")
+MAILPIT = os.environ.get("E2E_MAILPIT_URL")
 TIMEOUT_S = 60
 
 
@@ -68,6 +70,13 @@ def delivered(incident_id: str, count: int) -> list[dict]:
         return entries if len(entries) >= count else None
 
     return wait_until(reported, f"{count} notification results for {incident_id}")
+
+
+def mailpit(path: str, method: str = "GET") -> dict:
+    request = urllib.request.Request(f"{MAILPIT}/api/v1{path}", method=method)
+    with urllib.request.urlopen(request, timeout=30) as response:
+        body = response.read()
+    return json.loads(body) if method == "GET" else {}
 
 
 @unittest.skipUnless(SYSTEM, "E2E_SYSTEM_URL is not set")
@@ -136,3 +145,28 @@ class DependencyCatchUp(unittest.TestCase):
         add_dependency("Zephyrine:Quillgate Server")
         wait_for_incident("CVE-E2E-OLD")
         self.assertNotIn("CVE-E2E-OLD-OTHER", incidents())
+
+
+@unittest.skipUnless(SYSTEM and MAILPIT, "E2E_SYSTEM_URL or E2E_MAILPIT_URL is not set")
+class EmailNotice(unittest.TestCase):
+    def test_an_incident_is_emailed_to_the_teams_contact(self):
+        post("/reset", {"method": "RESET"})
+        mailpit("/messages", "DELETE")
+        post("/teams", {"Team_Name": "LEGAL", "Method": "NEW"})
+        contact = {"Contact_Channel": "email", "Contact": "legal@example.com"}
+        post("/teams", {"Team_Name": "LEGAL", "Method": "ADD_CONTACT", **contact})
+
+        add_dependency("Quillgate Server")
+        incident_id = wait_for_incident("CVE-E2E-RECENT")["Incident_ID"]
+        results = delivered(incident_id, 1)[0]["Details"]["results"]
+        self.assertEqual([r["status"] for r in results], ["delivered"], results)
+
+        # Reported as delivered only after the mail server took it, so it's already there
+        messages = mailpit("/messages")["messages"]
+        self.assertEqual(len(messages), 1)
+        email = mailpit(f"/message/{messages[0]['ID']}")
+        self.assertEqual([to["Address"] for to in email["To"]], ["legal@example.com"])
+        self.assertEqual(email["From"]["Address"], "alerts@example.com")
+        self.assertIn("CVE-E2E-RECENT", email["Subject"])
+        self.assertIn("Quillgate Server", email["Text"])
+        self.assertIn(f"/app/#/incidents/{incident_id}", email["Text"])

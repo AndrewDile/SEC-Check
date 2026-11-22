@@ -2,20 +2,20 @@
 # Run every test suite against a throwaway stack, as CI does. CI runs `./test.sh` before deploying.
 #
 # Hermetic: the stack is its own compose project (sec-check-test) with a fresh database, built from
-# .env.example, never .env. It publishes on other ports (18080, 13306), so it doesn't touch a dev
+# .env.example, never .env. It publishes on other ports (18080, 13306, 18025), so it doesn't touch a dev
 # stack or its data, and it's torn down after every run, passed or failed, volumes included.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 export COMPOSE_PROJECT_NAME=sec-check-test
-export HTTP_PORT=18080 DB_HOST_PORT=13306
+export HTTP_PORT=18080 DB_HOST_PORT=13306 MAILPIT_PORT=18025
 SYSTEM=http://localhost:$HTTP_PORT/system
 LOG_FILE=${TMPDIR:-/tmp}/sec-check-test-compose.log
 
 # Throwaway secrets for a throwaway stack. The API tests need its DB credentials and tokens too.
 set -a; . ./.env.example; set +a
 DC="docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.e2e.yml"
-E2E_SERVICES="ingestion-worker notification-service feed-mock"
+E2E_SERVICES="ingestion-worker notification-service feed-mock mailpit"
 
 if [ -n "$($DC ps -aq)" ]; then
   echo "A sec-check-test stack already exists: another ./test.sh is running, or one was killed." >&2
@@ -51,4 +51,5 @@ python3 tester/run_tests.py http://caddy/system --tester "http://localhost:$HTTP
 
 # Last, because it needs the worker and notifier, which the tests above must run without
 $DC up -d --build --wait $E2E_SERVICES
-E2E_SYSTEM_URL=$SYSTEM uv run python -m unittest ingestion_worker.tests.test_e2e -v
+E2E_SYSTEM_URL=$SYSTEM E2E_MAILPIT_URL=http://localhost:$MAILPIT_PORT \
+  uv run python -m unittest ingestion_worker.tests.test_e2e -v

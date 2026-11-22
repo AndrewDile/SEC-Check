@@ -35,7 +35,7 @@ docker compose up --build
 ```
 
 `./test.sh` runs every suite against a throwaway stack, as CI does: its own compose project
-(`sec-check-test`), a fresh database, `.env.example`'s settings, and ports 18080 and 13306. It
+(`sec-check-test`), a fresh database, `.env.example`'s settings, and ports 18080, 13306 and 18025. It
 removes the stack when it finishes, even after a failure, and doesn't touch the dev stack. It
 takes a few minutes, so ask before running it.
 
