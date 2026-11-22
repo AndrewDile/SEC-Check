@@ -15,10 +15,15 @@ also run it from your machine with `DEPLOY_HOST` and `DEPLOY_KEY` set. It goes l
     - Installs Docker.
     - Installs pinned `docker-compose` and `docker-buildx` plugins.
     - Creates the swap file.
-2. **Copy the files:** `rsync --delete` of the repo to `~/sec-check/`. It skips `.env`, `.git`,
+2. **Check disk space:** stops unless `/var/lib/docker` has at least 1500 MB free
+   (`MIN_FREE_MB` in `deploy.sh`). That is enough to rebuild every image. Nothing has been
+   copied or stopped yet, so the running site isn't affected. The failed deploy prints what is
+   using the disk; `sudo docker builder prune` on the server clears old build cache, which
+   deploys never remove.
+3. **Copy the files:** `rsync --delete` of the repo to `~/sec-check/`. It skips `.env`, `.git`,
    `node_modules`, `dist`, `.venv` and caches.
-3. **Check `.env`:** stops if `~/sec-check/.env` is missing.
-4. **Restart:** `docker compose down`, then `up -d --build`, then `docker image prune -f`.
+4. **Check `.env`:** stops if `~/sec-check/.env` is missing.
+5. **Restart:** `docker compose down`, then `up -d --build`, then `docker image prune -f`.
 
 GitHub Actions needs two repo secrets:
 
