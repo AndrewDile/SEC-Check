@@ -26,7 +26,8 @@ hash-chained audit log.
 | [Ingestion worker](services/ingestion-worker.md) | `ingestion_worker/` | Python (FastAPI) | none | Polls CISA KEV and SEC EDGAR, matches events to dependencies, and reports possible incidents |
 | [Notification service](services/notification-service.md) | `notification_service/` | Python (FastAPI) | none | Delivers notices of new ingested incidents to each team |
 | [Tester](services/tester.md) | `tester/` | Python (standard library only) | `/tester/` | The cross-team tester: runs a 54-test suite against any team's system |
-| Reverse proxy | `Caddyfile` | Caddy 2.10 | port 80 | The only public port; sends each path prefix to its container |
+| Reverse proxy | `Caddyfile` | Caddy 2.10 | port 80 | The only published web port; sends each path prefix to its container |
+| Tunnel | n/a | cloudflared | `https://sec-check.andrew-dile.net` | Server only: Cloudflare serves HTTPS and forwards requests to Caddy ([Operations](operations.md#public-address)) |
 | Log viewer | n/a | Dozzle | `/logs/` | Live logs for every container, behind a password |
 | Docs | `docs/` | MkDocs Material | `/docs/` | This site |
 

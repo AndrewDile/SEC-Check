@@ -1,5 +1,13 @@
 # Serves every public service on port 80 (plain HTTP), one path prefix per container.
 # handle_path strips the prefix, so /system/health reaches the Core API as /health.
+
+# Keep X-Forwarded-For from the Cloudflare tunnel container, so the Core API sees each client's IP
+{
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
 :80 {
 	handle_path /system/* {
 		reverse_proxy api:3001

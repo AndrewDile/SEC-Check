@@ -7,6 +7,7 @@
 
 services:
   caddy: { port: 80, published: ["${HTTP_PORT:-80}:80"] }   # the only public port; ./test.sh moves it
+  tunnel: { port: 2000 }   # Cloudflare Tunnel to sec-check.andrew-dile.net; its metrics port
   web_app: { port: 8000 }
   api: { port: 3001 }
   tester: { port: 8100 }
@@ -23,6 +24,7 @@ connections:
   - { from: caddy, to: tester, why: "/tester/*" }
   - { from: caddy, to: logs, why: "/logs*, behind basic_auth" }
   - { from: caddy, to: docs, why: "/docs/*" }
+  - { from: tunnel, to: caddy, why: "public HTTPS traffic from Cloudflare" }
 
   - { from: web_app, to: api, why: "Core API calls; no credentials" }
   - { from: tester, to: caddy, why: "runs tests against target_url (http://caddy/system in CI)" }

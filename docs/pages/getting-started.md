@@ -42,6 +42,7 @@ copy at `~/sec-check/.env`.
 | `SEC_USER_AGENT` | ingestion worker | Who is calling, e.g. `"Team Name you@example.com"`. The SEC blocks requests without one |
 | `WEB_APP_URL` | api | Public address of the web app, used for claim links in notifications. Default `http://localhost` |
 | `LOGS_USER`, `LOGS_PASSWORD_HASH` | caddy | Login for `/logs/`. Set both or neither (see [Operations](operations.md#log-viewer)) |
+| `TUNNEL_TOKEN`, `COMPOSE_PROFILES` | tunnel | Server only: the Cloudflare Tunnel token, and `tunnel` to start it. Leave empty locally (see [Operations](operations.md#public-address)) |
 | `LOG_LEVEL` | Python services run outside Docker | `INFO` by default |
 | `DEPLOY_HOST`, `DEPLOY_KEY` | `deploy.sh` | SSH target and key, when you deploy from your machine |
 

@@ -16,8 +16,9 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 - **Test session limits are per IP.** `/test/setup` is capped at `MAX_TEST_SESSIONS` active
   sessions and `SETUPS_PER_MINUTE` per client IP, which slows abuse but doesn't stop someone
   from filling the active sessions.
-- **Plain HTTP only.** There's no TLS, so tokens, the `/logs/` login and all data cross the
-  network unencrypted.
+- **HTTPS ends at Cloudflare.** Cloudflare decrypts every request before forwarding it through
+  the tunnel, so it can read all traffic, including the `/logs/` login. Inside the server,
+  traffic is plain HTTP.
 - **Static tokens.** The service-to-service bearer tokens never rotate.
 
 ## Data and the audit trail
@@ -102,6 +103,8 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
     - Container logs are lost on every deploy.
     - Container logs aren't rotated, which risks filling the small disk.
 - **Downtime on deploy.** Every deploy restarts every container, with a short outage.
+- **Cloudflare cuts off requests after 100 seconds.** A `POST /tester/test/run` against a slow
+  target can take up to 240 seconds (`run_budget`), and the caller then gets a 524 error.
 - **One server.** A single small EC2 instance with no redundancy and no automated backups of
   the database.
 

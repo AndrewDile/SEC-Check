@@ -3,8 +3,20 @@
 ## Where it runs
 
 There's one EC2 instance running Amazon Linux, with about 1 GB of RAM and 2 GB of swap. The
-whole `docker-compose.yml` stack runs on it. Only port 80 (HTTP) needs to be open to the
-internet, plus port 22 for deploys.
+whole `docker-compose.yml` stack runs on it. Only port 22 needs to be open, for deploys: web
+traffic arrives through the Cloudflare Tunnel.
+
+## Public address
+
+The site is at `https://sec-check.andrew-dile.net`, through a Cloudflare Tunnel. Cloudflare holds
+the certificate, and the `tunnel` container (`cloudflared`) forwards requests to `caddy:80` over
+an outbound connection, so no web port is open on the instance.
+
+The container is in the `tunnel` compose profile, so only the server, whose `.env` sets
+`COMPOSE_PROFILES=tunnel` and `TUNNEL_TOKEN`, starts it. CI and local stacks skip it.
+
+Caddy trusts `X-Forwarded-For` from private addresses (`trusted_proxies` in `Caddyfile`), so the
+Core API sees each client's real IP for its per-IP test session limit, not the tunnel's.
 
 ## Deployment
 
@@ -30,9 +42,12 @@ Deploys queue rather than run at the same time.
 **The server's `.env`** is installed by hand and never copied. Besides the database credentials
 and tokens, set:
 
-- `WEB_APP_URL` to `http://<public host>`, for the claim links in notifications
+- `WEB_APP_URL` to `https://sec-check.andrew-dile.net`, for the claim links in notifications
+- `TUNNEL_TOKEN`, and `COMPOSE_PROFILES=tunnel` to start the tunnel
 - `SEC_USER_AGENT`
 - both `LOGS_*` variables
+
+Make it readable only by its owner: `chmod 600 ~/sec-check/.env`.
 
 Every deploy recreates every container. That causes:
 
