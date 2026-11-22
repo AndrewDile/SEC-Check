@@ -1,6 +1,6 @@
 # For the end-to-end tests (ingestion_worker/tests/test_e2e.py): the real worker and notifier,
-# reading fake feeds and emailing a fake mail server. The worker polls hourly, so what the tests see
-# comes from its catch-up.
+# reading fake feeds, and notifying a fake mail server, Slack and Teams. The worker polls hourly, so
+# what the tests see comes from its catch-up.
 services:
   feed-mock:
     build:
@@ -35,13 +35,43 @@ services:
       - "127.0.0.1:${MAILPIT_PORT:-18025}:8025"
     networks: [notify]
 
+  # A fake Slack and Teams: it takes their host names on the notifier's network, so the notifier's
+  # HTTPS and host checks stay on. Only the notifier trusts its certificate.
+  webhook-mock:
+    build:
+      context: .
+      dockerfile: notification_service/Dockerfile
+    command: ["python", "-m", "notification_service.tests.mock_webhooks"]
+    user: root   # to write the certificate to the volume
+    environment:
+      CERT_FILE: /certs/webhooks.pem
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8004')"]
+      interval: 1s
+      retries: 30
+    ports:
+      - "127.0.0.1:${WEBHOOK_MOCK_PORT:-18004}:8004"
+    volumes:
+      - webhook-certs:/certs
+    networks:
+      notify:
+        aliases: [hooks.slack.com, e2e.environment.api.powerplatform.com]
+
   notification-service:
     environment:
+      SSL_CERT_FILE: /certs/webhooks.pem
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_SECURITY: none
       SMTP_USER: alerts@example.com
       SMTP_PASSWORD: e2e-password
+    volumes:
+      - webhook-certs:/certs:ro
     depends_on:
       mailpit:
         condition: service_healthy
+      webhook-mock:
+        condition: service_healthy
+
+volumes:
+  webhook-certs:

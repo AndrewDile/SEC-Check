@@ -82,8 +82,8 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 ## Testing
 
 - **Missing tests.** The worker's feed parsers and the notifier's `log` channel and result report have none.
-  Slack and Teams are only tested against fakes in unit tests. Email is also tested end to end, against Mailpit
-  without encryption. Nothing tests the real services. The web app's tests aren't in this repo.
+  Email, Slack and Teams are tested end to end against fakes (email without encryption), which accept any
+  well-formed message. Nothing tests that the real services accept ours. The web app's tests aren't in this repo.
 - **Code coverage is shared between overlapping sessions.** V8 can't tell which request ran a
   line, so sessions running at the same time count each other's lines (`basis` names them).
   Component coverage isn't measured.
