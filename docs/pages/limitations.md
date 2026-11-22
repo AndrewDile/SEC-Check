@@ -42,14 +42,24 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 
 ## Ingestion and notifications
 
-- **Notifications aren't sent anywhere yet.** The only channel is `log`, so a notice is a line
-  in the notification service's log.
+- **With no teams, nobody is notified.** A reset leaves no teams, so a notice sent before any are
+  created has no recipients and isn't sent again later.
+- **Email needs an SMTP account.** Until `SMTP_HOST` and `SMTP_FROM` are set, email notices are
+  reported as `failed`. A team without contacts still only gets a line in the notifier's log.
+- **Teams' webhook hosts are assumed.** The Core API and notifier accept Workflows webhooks on
+  `*.logic.azure.com` and `*.api.powerplatform.com`. Check a real Workflows URL against these.
+- **Slack's and Teams' rate limits aren't respected.** A `429` is retried on the usual schedule
+  (2 s, 4 s, ...), not after the `Retry-After` the service asks for.
+- **Team contacts can only be set through the API** (`/teams ADD_CONTACT`). The web app has no
+  screen for them yet.
 - **MATERIAL decisions don't go through the notification service.** The web app's notice for a
   `MATERIAL` decision is only a database record, made through `/notifier NOTIFY`.
 - **Failed calls are eventually dropped.**
     - The Core API's calls to the worker and notifier are retried 5 times, then dropped with one
       error line.
     - The retry queue is in memory, so a restart loses it.
+    - If the notifier can't report its delivery results to the Core API, they're lost: it doesn't
+      retry, and the audit log never records them.
 - **State that a restart loses:**
     - **Notifier:** the record of which notifications it already accepted, so a retry after a
       restart may send twice.
@@ -68,7 +78,8 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 
 ## Testing
 
-- **Missing tests.** The worker's feed parsers and the notifier's channels and API have none. The web app's
+- **Missing tests.** The worker's feed parsers and the notifier's `log` channel and result report have none.
+  The email, Slack and Teams channels are only tested against fakes, never the real services. The web app's
   tests aren't in this repo.
 - **Code coverage is shared between overlapping sessions.** V8 can't tell which request ran a
   line, so sessions running at the same time count each other's lines (`basis` names them).

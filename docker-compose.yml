@@ -2,7 +2,7 @@ services:
   caddy:   # the only public port; see Caddyfile for which path goes where
     image: caddy:2.10
     ports:
-      - "80:80"
+      - "${HTTP_PORT:-80}:80"   # ./test.sh moves it, so it can run next to a dev stack
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -69,7 +69,7 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "127.0.0.1:3306:3306"   # local tools only, never public
+      - "127.0.0.1:${DB_HOST_PORT:-3306}:3306"   # local tools only, never public
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:   # TCP, so it only passes once init scripts are done
@@ -119,6 +119,13 @@ services:
       CORE_API_URL: http://api:3001
       CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
+      # Email; with SMTP_HOST empty, email notices fail as not set up. Slack and Teams need nothing here.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       - api
     networks: [notify]

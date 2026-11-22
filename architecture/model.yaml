@@ -6,13 +6,13 @@
 # as "these two containers can reach each other". The direction and "why" are for people.
 
 services:
-  caddy: { port: 80, published: ["80:80"] }   # the only public port
+  caddy: { port: 80, published: ["${HTTP_PORT:-80}:80"] }   # the only public port; ./test.sh moves it
   web_app: { port: 8000 }
   api: { port: 3001 }
   tester: { port: 8100 }
   logs: { port: 8080 }
   docs: { port: 80 }
-  db: { port: 3306, published: ["127.0.0.1:3306:3306"] }   # local tools only
+  db: { port: 3306, published: ["127.0.0.1:${DB_HOST_PORT:-3306}:3306"] }   # local tools only
   ingestion-worker: { port: 8002 }
   notification-service: { port: 8001 }
 

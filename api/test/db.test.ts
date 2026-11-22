@@ -280,24 +280,83 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       expect((await db.listUsers()).every((u) => u.teams.length === 0)).toBe(true);
     });
 
-    it('adds members, and notifies them at their contact', async () => {
+    it('adds and removes members, who are never notified', async () => {
       await db.createUser({ username: 'erin', contactChannel: 'email', contactAddress: 'erin@example.com' });
-      await db.createTeam('EMPTY');
       await db.addMember('CYBER2', 'erin');
       expect(await dbError(db.addMember('CYBER2', 'erin'))).toBe('USER_EXISTS');
       expect((await db.getTeam('CYBER2')).members).toEqual(['erin']);
-      const contacts = await db.listContacts();
-      expect(contacts).toContainEqual({
-        team: 'CYBER2',
-        username: 'erin',
-        channel: 'email',
-        address: 'erin@example.com',
-      });
-      expect(contacts).toContainEqual({ team: 'EMPTY', channel: 'log', address: 'EMPTY' });
+      expect((await db.listContacts()).map((c) => c.address)).not.toContain('erin@example.com');
       expect(await dbError(db.addMember('CYBER2', 'mallory'))).toBe('USER_DNE');
       expect(await dbError(db.addMember('GHOST', 'erin'))).toBe('TEAM_DNE');
       await db.removeUser('erin');
       expect((await db.getTeam('CYBER2')).members).not.toContain('erin');
+    });
+  });
+
+  describe('team contacts', () => {
+    const SLACK = 'https://hooks.slack.com/services/T0/B0/secret1234';
+
+    it("adds, lists and removes a team's contacts, and audits them masked", async () => {
+      const slack = await db.addTeamContact('LEGAL', 'slack', SLACK);
+      const email = await db.addTeamContact('LEGAL', 'email', 'legal@example.com');
+      await db.addTeamContact('LEGAL', 'email', 'counsel@example.com'); // several of one channel
+      expect(await dbError(db.addTeamContact('LEGAL', 'slack', SLACK))).toBe('INVALID_DATA');
+      expect(await dbError(db.addTeamContact('GHOST', 'slack', SLACK))).toBe('TEAM_DNE');
+      expect((await db.getTeam('LEGAL')).contacts.slice(0, 2)).toEqual([
+        { id: slack, channel: 'slack', address: SLACK },
+        { id: email, channel: 'email', address: 'legal@example.com' },
+      ]);
+
+      expect(await dbError(db.removeTeamContact('CYBER1', slack))).toBe('INVALID_DATA'); // another team's
+      await db.removeTeamContact('LEGAL', slack);
+      expect(await dbError(db.removeTeamContact('LEGAL', slack))).toBe('INVALID_DATA');
+      expect((await db.getTeam('LEGAL')).contacts.map((c) => c.channel)).toEqual(['email', 'email']);
+
+      const raw = await mysql.createConnection({
+        host: process.env.DB_HOST ?? 'localhost',
+        port: Number(process.env.DB_PORT ?? 3306),
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME ?? 'seccheck',
+      });
+      try {
+        const [rows] = await raw.query<mysql.RowDataPacket[]>(
+          "SELECT payload_json FROM audit_log WHERE scope_id = 0 AND event_type LIKE 'TEAM_CONTACT_%'",
+        );
+        expect(rows).toHaveLength(4);
+        expect(JSON.stringify(rows)).not.toContain('secret');
+      } finally {
+        await raw.end();
+      }
+    });
+
+    it('notifies each team at its contacts, once per shared contact, and in the log without any', async () => {
+      const slack = await db.addTeamContact('CYBER1', 'slack', SLACK);
+      await db.addTeamContact('CYBER2', 'slack', SLACK);
+      const email = await db.addTeamContact('CYBER2', 'email', 'cyber@example.com');
+      const contacts = await db.listContacts();
+      // Teams created in the same millisecond sort by name, so LEGAL may come first or last
+      expect(contacts).toHaveLength(3);
+      expect(contacts).toEqual(
+        expect.arrayContaining([
+          { recipientId: `team:CYBER1:${slack}`, teams: ['CYBER1', 'CYBER2'], channel: 'slack', address: SLACK },
+          { recipientId: `team:CYBER2:${email}`, teams: ['CYBER2'], channel: 'email', address: 'cyber@example.com' },
+          { recipientId: 'team:LEGAL:log', teams: ['LEGAL'], channel: 'log', address: 'LEGAL' },
+        ]),
+      );
+    });
+
+    it("deletes a team's contacts with the team, and on reset", async () => {
+      await db.createTeam('EXTRA');
+      await db.addTeamContact('EXTRA', 'email', 'extra@example.com');
+      await db.removeTeam('EXTRA');
+      await db.createTeam('EXTRA');
+      expect((await db.getTeam('EXTRA')).contacts).toEqual([]);
+
+      await db.addTeamContact('LEGAL', 'email', 'legal@example.com');
+      await db.reset();
+      await db.createTeam('LEGAL');
+      expect((await db.getTeam('LEGAL')).contacts).toEqual([]);
     });
   });
 

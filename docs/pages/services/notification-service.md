@@ -30,10 +30,29 @@ decision notices, which are only database records (see [Architecture](../archite
 
 ## Channels
 
-The only channel is **`log`** (`channels/log.py`): it writes the message to the service's log. The
-Core API sends every team as a `log` recipient, so no email, SMS or chat message is sent yet. To
-read the notices, use [the log viewer](../operations.md#log-viewer) or
-`docker compose logs notification-service`.
+The Core API sends each team's contacts (see [team contacts](core-api.md#post-teams)), and a team
+with no contacts as a `log` recipient. Every channel renders the same message
+(`dispatcher.render`) in its own format:
+
+| Channel | File | Sends | Gives up on (no retry) | Retries |
+|---|---|---|---|---|
+| `email` | `channels/email.py` | A plain-text email over SMTP (`smtplib`), from `SMTP_FROM` | Email not set up, a refused recipient, a failed login, any `5xx` reply, a server without STARTTLS | `4xx` replies, connection errors, timeouts |
+| `slack` | `channels/slack.py` | A [Block Kit](https://api.slack.com/block-kit) message to an incoming webhook: the subject as a header, the body, and a **Claim this incident** button | Any `3xx` or `4xx` but `429` (a removed webhook answers `404`, `403` or `410`) | `429`, `5xx`, connection errors, timeouts |
+| `ms_teams` | `channels/teams.py` | An Adaptive Card to a Teams Workflows webhook, with the same parts | The same as Slack | The same as Slack |
+| `log` | `channels/log.py` | A line in the service's log | Nothing | Nothing |
+
+- **Webhook hosts:** Slack and Teams check the host again before posting (`hooks.slack.com`,
+  `*.logic.azure.com`, `*.api.powerplatform.com`, over HTTPS), as the Core API does when the
+  contact is added. They don't follow redirects, so a webhook can't send the notifier elsewhere.
+- **Limits:** Slack's header is cut to 150 characters and its body to 3000, Block Kit's limits.
+  Slack's markup characters (`&`, `<`, `>`) are escaped.
+- **Teams lines:** the card has one text block per line of the body, because Teams clients don't
+  agree on how to show newlines inside one block.
+- **Email:** works with any SMTP server. For Gmail, use `smtp.gmail.com`, port 587, `starttls`,
+  and an [app password](https://support.google.com/accounts/answer/185833), not the account's
+  password. Gmail limits how many emails an account can send a day.
+- **Reading `log` notices:** use [the log viewer](../operations.md#log-viewer) or
+  `docker compose logs notification-service`.
 
 To add a channel:
 
@@ -64,5 +83,11 @@ There's also `GET /healthz`, which returns `{"status": "ok"}`.
 | `CORE_API_TOKEN` | required | Sent to the Core API |
 | `INBOUND_TOKEN` | required | Expected from the Core API |
 | `MAX_ATTEMPTS` | `3` | Tries per recipient |
+| `HTTP_TIMEOUT_S` | `10` | Timeout for each webhook post and SMTP connection, in seconds |
+| `SMTP_HOST` | empty | SMTP server. Empty turns email off: email notices fail, saying it isn't set up |
+| `SMTP_PORT` | `587` | SMTP port (465 for `ssl`) |
+| `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` (TLS from the start) or `none` (only for a local test server) |
+| `SMTP_USER`, `SMTP_PASSWORD` | empty | Login. With `SMTP_USER` empty, it doesn't log in |
+| `SMTP_FROM` | `SMTP_USER` | The sender address. Email is off without one |
 | `HOST`, `PORT` | `127.0.0.1`, `8001` (the image sets `0.0.0.0`) | Where it listens |
 | `LOG_LEVEL` | `INFO` | Python logging level |

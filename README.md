@@ -60,9 +60,10 @@ Python services use [ruff](https://docs.astral.sh/ruff/) (needs [uv](https://doc
 
 ## Tests
 
-`./test.sh` starts the stack (without the ingestion worker and notifier), then runs the tester, worker and notifier unit tests,
-the API and database tests (`api/test/`), and the cross-team suite, then the worker and notifier end-to-end tests against mock feeds. It **wipes the
-local database**. CI runs it after lint and format pass, and deploys `main` only if it passes.
+`./test.sh` starts a throwaway stack (without the ingestion worker and notifier), then runs the tester, worker and notifier unit tests,
+the API and database tests (`api/test/`), and the cross-team suite, then the worker and notifier end-to-end tests against mock feeds. The stack
+is its own compose project with a fresh database and `.env.example`'s settings, and it's removed after every run, so your dev stack and its
+data aren't touched. CI runs it after lint and format pass, and deploys `main` only if it passes.
 
 ## Adding a container
 

@@ -15,6 +15,8 @@ const METHODS = new Set([
   'RESET',
   'ADD_USER',
   'REMOVE_USER',
+  'ADD_CONTACT',
+  'REMOVE_CONTACT',
 ]);
 const MAX_SAMPLES = 10_000; // per operation per session
 

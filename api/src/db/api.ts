@@ -81,9 +81,16 @@ export interface UserFields {
   authHash?: string; // already hashed for storage; never read back
 }
 
+export interface TeamContact {
+  id: number;
+  channel: string;
+  address: string; // unmasked: callers outside the notifier path mask it (contacts.ts)
+}
+
+// One notification recipient. Notices go to teams only, at their team_contacts; never to a user.
 export interface Contact {
-  team: string;
-  username?: string; // undefined for a team with no members
+  recipientId: string; // team:<team>:<contact id>, or team:<team>:log for a team with no contacts
+  teams: string[]; // every team that shares this channel and address
   channel: string;
   address: string;
 }
@@ -125,11 +132,13 @@ export interface Database {
   // /teams
   createTeam(name: string, responsibility?: string): Promise<void>; // TEAM_EXISTS
   removeTeam(name: string): Promise<void>; // TEAM_DNE; INVALID_DATA while tickets, notifications or claims use it
-  getTeam(name: string): Promise<{ name: string; members: string[] }>; // TEAM_DNE
+  getTeam(name: string): Promise<{ name: string; members: string[]; contacts: TeamContact[] }>; // TEAM_DNE
   listTeams(): Promise<{ name: string; responsibility?: string }[]>;
   addMember(team: string, username: string): Promise<void>; // TEAM_DNE, USER_DNE; USER_EXISTS if already a member
   removeMember(team: string, username: string): Promise<void>; // TEAM_DNE; USER_DNE if not a member
-  listContacts(): Promise<Contact[]>; // who to notify for each team
+  addTeamContact(team: string, channel: string, address: string): Promise<number>; // TEAM_DNE; INVALID_DATA if a duplicate
+  removeTeamContact(team: string, contactId: number): Promise<void>; // TEAM_DNE; INVALID_DATA if not the team's
+  listContacts(): Promise<Contact[]>; // who to notify: each team at its contacts
 
   // /users
   createUser(user: { username: string } & UserFields): Promise<User>; // USER_EXISTS
@@ -151,7 +160,7 @@ export interface Database {
   getAuditLog(incidentId: string): Promise<AuditEntry[]>;
   verifyAuditChain(): Promise<{ ok: boolean; brokenAtSeq?: number }>;
 
-  // /reset: wipes the current scope and restores its default teams and users
+  // /reset: wipes the current scope and restores its default users
   reset(): Promise<void>;
 
   // test sessions (testing.ts)

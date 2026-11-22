@@ -47,12 +47,15 @@ to 255 characters). It is `MANUAL` when added through the API. The schema allows
 nothing sets it yet.
 
 **Team.** Created with `/teams NEW`; a reset or a new test session has none. `/teams` adds and
-removes teams and their members. (The first migrations still create `LEGAL`, `CYBER1` and
+removes teams, their members and their contacts. (The first migrations still create `LEGAL`, `CYBER1` and
 `CYBER2`, so a brand-new database has them until its first reset.)
 
-**User.** Someone who can act through the Core API (the `X-User` header), with a contact channel
-and address for notifications. The defaults are the web app's development users (`alice`, `bob`,
-`carol`, `dana`, `core-gateway`) and their teams; every reset restores them.
+**Team contact.** Where a team's notices go: an email address, a Slack webhook or a Teams
+Workflows webhook. Notices go to teams only. A team without contacts is notified in the log.
+
+**User.** Someone who can act through the Core API (the `X-User` header). Their contact channel
+and address are profile information only: users aren't notified. The defaults are the web app's development users (`alice`, `bob`,
+`carol`, `dana`, `core-gateway`), in no teams; every reset restores them.
 
 **Scope.** Which copy of the data a row belongs to: `scope_id` 0 is the real data, and each
 cross-team test session gets its own scope (`test_sessions`). Every table except
@@ -75,6 +78,7 @@ erDiagram
     incidents ||--o{ audit_log : "incident_id (not a foreign key)"
     teams ||--o{ team_members : ""
     users ||--o{ team_members : ""
+    teams ||--o{ team_contacts : ""
 ```
 
 | Table | Key | Notes |
@@ -86,8 +90,9 @@ erDiagram
 | `notifications` | `notification_id` | One row per team per `NOTIFY` |
 | `dependencies` | `(scope_id, dp_name)` | `source` is `MANUAL` or `AUTO` |
 | `teams` | `(scope_id, team_name)` | Created through `/teams`; empty after a reset |
-| `users` | `(scope_id, username)` | `contact_channel` (default `log`) and `contact_address` (the contract's `Contact`) say where notifications go. `auth_hash` is the scrypt of the client's `Auth_Hash`, never returned |
+| `users` | `(scope_id, username)` | `contact_channel` (default `log`) and `contact_address` (the contract's `Contact`), kept but not used for notices. `auth_hash` is the scrypt of the client's `Auth_Hash`, never returned |
 | `team_members` | `(scope_id, team_name, username)` | Who is on which team |
+| `team_contacts` | `contact_id` | Where each team's notices go: `channel` (`email`, `slack` or `ms_teams`) and `address`. A team can't have the same channel and address twice |
 | `audit_log` | `(scope_id, seq)` | Append-only and hash-chained, one chain per scope |
 | `audit_head` | `scope_id` | The tip of each scope's chain (last `seq` and `hash`) |
 | `business_calendar` | `day` | Days the SEC is closed besides weekends (US federal holidays, as observed), 2026 and 2027 |
@@ -116,7 +121,7 @@ Every Core API database method writes an entry in the same transaction as the ch
 - **Notifications:** `TEAMS_NOTIFIED`, `NOTIFICATION_SENT`, `NOTIFICATION_RESULTS`
 - **Dependencies:** `DEPENDENCY_ADDED`, `DEPENDENCY_REMOVED`
 - **Teams and users:** `TEAM_CREATED`, `TEAM_REMOVED`, `TEAM_MEMBER_ADDED`,
-  `TEAM_MEMBER_REMOVED`, `USER_CREATED`, `USER_EDITED`, `USER_REMOVED`
+  `TEAM_MEMBER_REMOVED`, `TEAM_CONTACT_ADDED` (with the address masked), `TEAM_CONTACT_REMOVED`, `USER_CREATED`, `USER_EDITED`, `USER_REMOVED`
 
 **`actor`** is who acted:
 
@@ -155,7 +160,7 @@ doesn't match its spec, and `./verify.sh --fix generated` regenerates it. The ma
 | `IncidentCreate` | `company_id`, `source`, `external_id`, `title`, `summary`, `source_url`, `published_at`, `detected_at`, `priority_hint`, `matched_dependencies[]`, `details`, `backfill` | A possible incident found by the worker |
 | `MatchedDependency` | `dependency_id`, `vendor`, `product`, `version?`, `confidence`, `reason` | Why the worker thinks a dependency is affected |
 | `NotificationRequest` | `notification_id`, `incident`, `claim_url`, `recipients[]`, `added_dependency_ids[]` | What the Core API hands the notifier |
-| `Recipient` | `recipient_id`, `team_name`, `channel`, `address` | One team member at their contact, or a team with no members in the log |
+| `Recipient` | `recipient_id`, `team_name`, `channel`, `address` | One team contact (shared by every team that has it), or a team with no contacts in the log |
 | `DeliveryResult` | `recipient_id`, `status`, `attempts`, `error?`, `delivered_at?` | What the notifier reports back. `status` is `delivered` or `failed` |
 
 The enums are:

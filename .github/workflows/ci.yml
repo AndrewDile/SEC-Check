@@ -68,10 +68,8 @@ jobs:
           cache-dependency-path: api/package-lock.json
       - run: npm ci
         working-directory: api
-      - run: cp .env.example .env   # throwaway secrets for a throwaway stack
+      # Reads .env.example, and prints the container logs itself if it fails (CI is set)
       - run: ./test.sh
-      - if: failure()
-        run: docker compose logs
 
   deploy:
     needs: test

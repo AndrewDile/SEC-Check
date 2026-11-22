@@ -428,6 +428,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expect((await teams({ Team_Name: 'Red Team', Method: 'GET' })).body).toEqual({
         Team_Name: 'Red Team',
         Members: [],
+        Contacts: [],
         Status: 'Team Received',
       });
       expect(await names()).toContain('Red Team');
@@ -446,6 +447,61 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expectError(await teams({ Team_Name: '', Method: 'NEW' }), 'INVALID_DATA');
       expectError(await teams({ Team_Name: 'X', Method: 'RENAME' }), 'INVALID_DATA');
       expectError(await teams({ Team_Name: 'LEGAL', Method: 'ADD_USER' }), 'INVALID_DATA');
+    });
+
+    describe('contacts', () => {
+      const SLACK = 'https://hooks.slack.com/services/T0/B0/secret1234';
+      const TEAMS =
+        'https://prod-01.westus.logic.azure.com:443/workflows/abc/triggers/manual/paths/invoke?sig=secret9876';
+      const add = (Contact_Channel: string, Contact: unknown, Team_Name = 'LEGAL') =>
+        teams({ Team_Name, Method: 'ADD_CONTACT', Contact_Channel, Contact });
+
+      it('adds, lists and removes contacts, and only returns webhook URLs masked', async () => {
+        const slack = await add('slack', SLACK);
+        expect(slack.body).toEqual({
+          Team_Name: 'LEGAL',
+          Contact_ID: expect.any(Number),
+          Contact_Channel: 'slack',
+          Contact: 'https://hooks.slack.com/…1234',
+          Status: 'Contact added',
+        });
+        await add('ms_teams', TEAMS);
+        await add('email', 'legal@example.com');
+        const team = await teams({ Team_Name: 'LEGAL', Method: 'GET' });
+        expect(team.body.Contacts.map((c: { Contact: string }) => c.Contact)).toEqual([
+          'https://hooks.slack.com/…1234',
+          'https://prod-01.westus.logic.azure.com/…9876',
+          'legal@example.com',
+        ]);
+        expect(JSON.stringify([slack.body, team.body])).not.toContain('secret');
+
+        const id = slack.body.Contact_ID;
+        expect((await teams({ Team_Name: 'LEGAL', Method: 'REMOVE_CONTACT', Contact_ID: id })).body).toEqual({
+          Team_Name: 'LEGAL',
+          Contact_ID: id,
+          Status: 'Contact removed',
+        });
+        expectError(await teams({ Team_Name: 'LEGAL', Method: 'REMOVE_CONTACT', Contact_ID: id }), 'INVALID_DATA');
+      });
+
+      it('accepts only Slack and Teams webhook hosts over HTTPS, and email addresses', async () => {
+        for (const url of [
+          'http://hooks.slack.com/services/T0/B0/x', // not HTTPS
+          'https://hooks.slack.com.evil.com/services/x', // look-alike host
+          'https://user@hooks.slack.com/services/x',
+          'http://api:3001/system/reset', // an internal address
+          'not a url',
+        ])
+          expectError(await add('slack', url), 'INVALID_DATA');
+        expectError(await add('ms_teams', 'https://evil.com/logic.azure.com'), 'INVALID_DATA');
+        expectError(await add('ms_teams', SLACK), 'INVALID_DATA');
+        expectError(await add('email', 'legal'), 'INVALID_DATA');
+        expectError(await add('email', 5), 'INVALID_DATA');
+        expectError(await add('log', 'LEGAL'), 'INVALID_DATA');
+        expectError(await add('sms', '+15555550100'), 'INVALID_DATA');
+        expectError(await add('slack', SLACK, 'GHOST'), 'TEAM_DNE');
+        expectError(await teams({ Team_Name: 'LEGAL', Method: 'REMOVE_CONTACT', Contact_ID: 'x' }), 'INVALID_DATA');
+      });
     });
 
     it('starts a team with no members, and adds and removes them', async () => {

@@ -119,15 +119,34 @@ fields, and:
 | `Method` | Needs | Does | `Status` |
 |---|---|---|---|
 | `NEW` | `Team_Name` | Creates the team (`TEAM_EXISTS` if it's already there) | `Created` |
-| `DELETE` | `Team_Name` | Removes it and its memberships (`TEAM_DNE` if it isn't there). A team that tickets, notifications or claims refer to stays: `INVALID_DATA` | `Removed` |
-| `GET` | `Team_Name` | Checks it exists (`TEAM_DNE` if not), and returns its `Members` (extension) | `Team Received` |
+| `DELETE` | `Team_Name` | Removes it, its memberships and its contacts (`TEAM_DNE` if it isn't there). A team that tickets, notifications or claims refer to stays: `INVALID_DATA` | `Removed` |
+| `GET` | `Team_Name` | Checks it exists (`TEAM_DNE` if not), and returns its `Members` and `Contacts` (extensions) | `Team Received` |
 | `LIST` | nothing | Every team name, oldest first, as `Team_List` | `Teams Listed` |
 | `ADD_USER` | `Team_Name`, `Username` | Adds the user to the team. `TEAM_DNE`, `USER_DNE` if the user doesn't exist, `USER_EXISTS` if they're already a member | `User added` |
 | `REMOVE_USER` | `Team_Name`, `Username` | Takes the user off the team. `TEAM_DNE`, `USER_DNE` if they aren't a member | `User removed` |
+| `ADD_CONTACT` | `Team_Name`, `Contact_Channel`, `Contact` | Adds a place the team's notices go, extension. `TEAM_DNE`; `INVALID_DATA` if the contact is invalid or the team already has it | `Contact added` |
+| `REMOVE_CONTACT` | `Team_Name`, `Contact_ID` | Removes one of the team's contacts, extension. `TEAM_DNE`; `INVALID_DATA` if the team has no such contact | `Contact removed` |
 
 `Team_Name` is 1-64 characters with no leading or trailing spaces, and required for every
 method except `LIST`. The response has `Status`, plus `Team_Name` (every method except `LIST`),
 `Team_List` (`LIST`), `Members` (`GET`) and `Username` (`ADD_USER`/`REMOVE_USER`).
+
+**Team contacts.** Notices about new incidents go to teams, at their contacts, never to individual
+users. A team can have any number of contacts, several on one channel included:
+
+| `Contact_Channel` | `Contact` must be |
+|---|---|
+| `email` | An email address, at most 255 characters |
+| `slack` | An `https://` Slack incoming webhook URL on exactly `hooks.slack.com` |
+| `ms_teams` | An `https://` Teams Workflows webhook URL on a `*.logic.azure.com` or `*.api.powerplatform.com` host |
+
+- **Host checks:** the URL is parsed and its host compared exactly. Look-alike hosts and internal
+  addresses (such as `http://api:3001`) are rejected, so a contact can't point the notification
+  service at the stack itself.
+- **Masking:** a webhook URL works like a password, so it's returned and audited only masked, as
+  `https://<host>/…<last 4 characters>`. Email addresses are shown in full.
+- **Responses:** `ADD_CONTACT` returns `Contact_ID`, `Contact_Channel` and the masked `Contact`.
+  `GET` returns them for each contact, as `Contacts`. Remove a contact by its `Contact_ID`.
 
 ### `POST /users`
 
@@ -139,9 +158,8 @@ method except `LIST`. The response has `Status`, plus `Team_Name` (every method 
 | `GET` | `Username` | The user (`USER_DNE`), extension | `User Received` |
 | `LIST` | nothing | Every user, as `Users`, extension | `Users Listed` |
 
-`Contact` is where the user's notifications go. Two optional extensions go with it:
-`Contact_Channel`, the notification service channel (default `log`, the only one that delivers
-anything today), and `Display_Name`. The response is `{"Username", "Status"}` plus, except for
+`Contact` is profile information only: notices go to teams (see team contacts above), not to
+users. Two optional extensions go with it: `Contact_Channel` (default `log`) and `Display_Name`. The response is `{"Username", "Status"}` plus, except for
 `REMOVE`, `Contact`, `Contact_Channel`, `Display_Name` and `Teams`.
 
 `Auth_Hash` is never returned. It's stored salted and hashed again with scrypt, since whatever
@@ -225,9 +243,12 @@ The token also sets the audit log's actor: `ingestion-worker` or `notification-s
     - **Dependency:** the first matched dependency.
 4. It returns 201 with the payload plus `id` and `created_at`.
 5. It then notifies the teams:
-    - It sends the notification service one `Recipient` per team member, at the member's
-      contact channel and address (the username when there's no address). A team with no
-      members gets one recipient with `channel: "log"` and the team name as the address.
+    - It sends the notification service one `Recipient` per team contact, with the id
+      `team:<team>:<contact id>`. A team with no contacts gets one recipient with
+      `channel: "log"`, the team name as the address and the id `team:<team>:log`.
+    - Teams that share a contact (the same channel and address) share one recipient, so a
+      Slack channel or mailbox gets each notice once. Its `team_name` lists them, comma-separated.
+    - Recipient ids never contain the address, since they're stored in the audit log.
     - `claim_url` is `${WEB_APP_URL}/app/#/incidents/<id>`.
     - It writes a `NOTIFICATION_SENT` audit entry.
 
