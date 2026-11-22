@@ -15,11 +15,6 @@ DECISION_FIELDS = ("Materiality", "Severity", "Urgency")
 FUTURE_TOLERANCE = timedelta(seconds=5)  # allow small clock skew between browser and server
 
 
-def _present(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Drop unknown (None) values: the Web App spec types these fields as non-nullable strings."""
-    return {k: v for k, v in d.items() if v is not None}
-
-
 def ensure_dependency_exists(ctx: Context, name: str, steps: List[str]) -> None:
     result = ctx.core.dp_match(steps, name)
     if not ctx.core.dp_exists(result):
@@ -140,7 +135,7 @@ def record_decision(ctx: Context, req: Request) -> Dict[str, Any]:
     with tracked(steps):
         current = ctx.core.incident_get(steps, incident_id)
         new = {k: body.get(k, current.get(k, "UNDECIDED")) for k in DECISION_FIELDS}
-        ctx.core.incident_edit(
+        edited = ctx.core.incident_edit(
             steps,
             incident_id=incident_id,
             description=current.get("Description", ""),
@@ -181,7 +176,7 @@ def record_decision(ctx: Context, req: Request) -> Dict[str, Any]:
         "Decision_Ticket_ID": ticket.get("Ticket_ID"),
         "Determined_At": determined_at,
         "Notified_Teams": notified,
-        "Filing_Deadline": None,  # not exposed by the Core API yet (gap G-8)
+        "Filing_Deadline": edited.get("Filing_Deadline"),
     }
 
 
@@ -192,69 +187,4 @@ def get_incident_log(ctx: Context, req: Request) -> Dict[str, Any]:
 
 @operation("getForm8kView")
 def get_form_8k_view(ctx: Context, req: Request) -> Dict[str, Any]:
-    incident_id = req.path_params["Incident_ID"]
-    incident = ctx.core.incident_get(None, incident_id)
-    if incident.get("Materiality") != "MATERIAL":
-        raise invalid("Form 8-K view is only available for incidents marked MATERIAL.")
-    log = ctx.core.logs(None, incident_id)
-    ticket_ids = log["Ticket_ID_List"]
-    numbers: List[str] = []
-    for tid in ticket_ids:
-        weak = weak_ticket_id(tid)
-        if weak not in numbers:
-            numbers.append(weak)
-    tickets = [ctx.core.ticket_get(None, incident_id=incident_id, ticket_number=n) for n in numbers]
-
-    # Ticket timestamps are not in the Core spec response (mock adds them); order by them when present.
-    tickets_by_time = sorted(tickets, key=lambda t: t.get("Timestamp") or "")
-    content = [t for t in tickets if not audit.is_audit(t.get("Ticket_Description"))]
-    decisions = [(t, audit.parse_decision(t.get("Ticket_Description"))) for t in tickets_by_time]
-    decisions = [(t, d) for t, d in decisions if d]
-    material = [(t, d) for t, d in decisions if d["Materiality"] == "MATERIAL"]
-    determined_at = material[-1][0].get("Timestamp") if material else None
-
-    teams: List[str] = []
-    for t in tickets:
-        for team in t.get("Team_List") or []:
-            if team not in teams:
-                teams.append(team)
-
-    nature = "\n\n".join(
-        [incident.get("Description", "")] + [t.get("Ticket_Description", "") for t in content]
-    ).strip()
-    return {
-        "Incident_ID": incident_id,
-        "Status": "8-K View Assembled",
-        "Item_1_05": {
-            "Nature": nature,
-            "Scope": _present(
-                {
-                    "Severity": incident.get("Severity"),
-                    "Dependency_Name": incident.get("Dependency_Name"),
-                    "Teams_Involved": teams,
-                }
-            ),
-            "Timing": _present(
-                {
-                    "Discovered_At": incident.get("Timestamp"),
-                    "Determined_At": determined_at,
-                    "Events": [
-                        _present(
-                            {
-                                "Ticket_ID": t.get("Ticket_ID"),
-                                "Timestamp": t.get("Timestamp"),
-                                "Summary": (t.get("Ticket_Description") or "")[:300],
-                            }
-                        )
-                        for t in tickets_by_time
-                    ],
-                }
-            ),
-            "Material_Impact": "\n\n".join(d["Rationale"] for _, d in material),
-        },
-        "Filing": {
-            **_present({"Determined_At": determined_at}),
-            "Filing_Deadline": None,
-        },  # deadline: gap G-8
-        "Source_Tickets": ticket_ids,
-    }
+    return ctx.core.form_8k(None, req.path_params["Incident_ID"])

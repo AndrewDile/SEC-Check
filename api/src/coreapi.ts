@@ -13,6 +13,7 @@ import {
 } from './db/api.js';
 import { migrate } from './db/migrate.js';
 import { MySqlDb } from './db/mysql.js';
+import { form8k } from './form8k.js';
 import { requestMetrics } from './metrics.js';
 import { servicesRouter, worker } from './services.js';
 import { testError, testSessions } from './testing.js';
@@ -167,7 +168,7 @@ function userOut(u: User, status?: string) {
   };
 }
 
-// Pod contract v1.0.0 (all POST, Method in the body), plus the LIST methods the web app uses ------
+// Pod contract v1.0.0 (all POST, Method in the body), plus the LIST and FORM_8K methods the web app uses ------
 
 app.post('/incidents', async (req, res) => {
   const b = req.body ?? {};
@@ -207,8 +208,12 @@ app.post('/incidents', async (req, res) => {
     }
     case 'GET':
       return res.json(incidentOut(await db.getIncident(id), 'Data Fetched'));
+    case 'FORM_8K': {
+      const { incident, tickets, entries } = await db.getForm8k(id);
+      return res.json(form8k(incident, tickets, entries));
+    }
     default:
-      invalid('Method must be one of NEW, EDIT, GET.');
+      invalid('Method must be one of NEW, EDIT, GET, FORM_8K.');
   }
 });
 

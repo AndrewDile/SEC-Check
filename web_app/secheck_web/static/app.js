@@ -536,7 +536,7 @@ async function show8k(id) {
       <section data-testid="8k-impact"><h3>Material impact</h3><p class="clamp">${esc(item.Material_Impact || "No rationale recorded.")}</p></section>
       <section data-testid="8k-filing"><h3>Filing</h3><dl>
         <dt>Determined at</dt><dd>${esc(fmtTime(v.Filing.Determined_At))}</dd>
-        <dt>Filing deadline</dt><dd>${v.Filing.Filing_Deadline ? esc(fmtTime(v.Filing.Filing_Deadline)) : "Not provided by the Core API yet (four business days after determination)"}</dd></dl></section>
+        <dt>Filing deadline</dt><dd>${esc(v.Filing.Filing_Deadline)} (four business days after determination)</dd></dl></section>
     </div>`;
   clampText(panel);
   const heading = $("h2", panel);   // move keyboard and screen-reader users to the view that just opened

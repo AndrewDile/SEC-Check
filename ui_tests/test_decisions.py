@@ -1,5 +1,6 @@
 """Recording materiality decisions and the Form 8-K view."""
 
+import re
 import unittest
 
 from playwright.sync_api import expect
@@ -67,6 +68,7 @@ class Decisions(UITestCase):
         expect(self.tid("8k-scope", view)).to_contain_text("CYBER1")
         expect(self.tid("8k-impact", view)).to_contain_text("Records of 40,000 customers exposed.")
         expect(self.tid("8k-timing", view)).to_contain_text(self.iid + "_2")
+        expect(self.tid("8k-filing", view)).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}"))
 
 
 if __name__ == "__main__":

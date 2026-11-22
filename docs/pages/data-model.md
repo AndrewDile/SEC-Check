@@ -109,15 +109,15 @@ teams claiming at once wins.
 ## Audit log
 
 Every Core API database method writes an entry in the same transaction as the change,
-**including reads** (`INCIDENT_READ`, `TICKET_READ`, `LOG_READ`). A `LIST` on `/incidents` or
-`/tickets` writes one entry per call, not per row. The event types are:
+**including reads** (`INCIDENT_READ`, `TICKET_READ`, `LOG_READ`, `FORM_8K_READ`). A `LIST` on
+`/incidents` or `/tickets` writes one entry per call, not per row. The event types are:
 
 - **Incidents:** `INCIDENT_CREATED`, `INCIDENT_EDITED`, `INCIDENT_MATCHES_ADDED`, `MATERIALITY_REVERSED`, `INCIDENT_READ`,
   `INCIDENTS_LISTED`. Edits record `before` and `after` for the changed fields, and the `note`
   when one was given.
 - **Tickets:** `TICKET_CREATED`, `TICKET_EDITED`, `TICKET_READ`, `TICKET_CLAIMED`,
   `TICKETS_LISTED`
-- **Logs:** `LOG_READ`
+- **Logs:** `LOG_READ`, `FORM_8K_READ`
 - **Notifications:** `TEAMS_NOTIFIED`, `NOTIFICATION_SENT`, `NOTIFICATION_RESULTS`
 - **Dependencies:** `DEPENDENCY_ADDED`, `DEPENDENCY_REMOVED`
 - **Teams and users:** `TEAM_CREATED`, `TEAM_REMOVED`, `TEAM_MEMBER_ADDED`,

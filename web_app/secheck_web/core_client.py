@@ -224,6 +224,11 @@ class CoreClient:
                 body[key] = value
         return self._incident_out(self._post(PATH_INCIDENTS, body, steps))
 
+    def form_8k(self, steps, incident_id: str) -> Dict[str, Any]:
+        """EXTENSION: the Core API assembles the Form 8-K Item 1.05 view."""
+        body = {"Incident_ID": incident_id, "Method": "FORM_8K", "Timestamp": self.clock()}
+        return self._post(PATH_INCIDENTS, body, steps)
+
     def incident_list(self, steps) -> List[Dict[str, Any]]:
         """EXTENSION (gap G-5)."""
         data = self._post(PATH_INCIDENTS, {"Method": "LIST", "Timestamp": self.clock()}, steps)
