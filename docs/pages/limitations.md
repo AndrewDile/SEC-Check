@@ -58,12 +58,17 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 - **Matching is name-based and ignores versions.** False positives are expected; the team that
   claims an incident checks whether its version is affected.
 - **EDGAR's search API is undocumented.** It can change without notice.
-- **A short lookback.** Events older than `LOOKBACK_DAYS` (30) are never matched, even for a
-  dependency added later.
+- **Limited lookback for new dependencies.** A new dependency is checked against all of KEV, but
+  EDGAR only as far back as `LOOKBACK_DAYS` (30). Older low-confidence KEV matches are skipped.
+- **Backfilled incidents are silent.** Older KEV matches appear as incidents without a notification.
+- **Low-confidence matches carry the source's priority.** A vendor-only or product-only match can
+  still be labelled `[CRITICAL]` in its notification.
+- **Later matches are only partly visible.** A dependency added to an existing incident appears in
+  the notification and the audit log. The web app still shows only the first dependency.
 
 ## Testing
 
-- **Missing tests.** The ingestion worker and notification service have none. The web app's
+- **Missing tests.** The worker's feed parsers and the notifier's channels and API have none. The web app's
   tests aren't in this repo.
 - **Code coverage is shared between overlapping sessions.** V8 can't tell which request ran a
   line, so sessions running at the same time count each other's lines (`basis` names them).
