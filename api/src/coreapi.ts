@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 import express from 'express';
+import { checkChannel, checkContact, maskAddress } from './contacts.js';
 import { current, runIn, SERVICE_ACTORS, UNKNOWN } from './context.js';
 import {
   DbError,
@@ -298,6 +299,8 @@ app.post('/logs', async (req, res) => {
 
 // Teams: only teams created here (or the defaults /reset restores) can be used on tickets and in /notifier.
 // GET and LIST are additions to the spec's NEW, REMOVE, ADD_USER, REMOVE_USER so teams can be read back.
+// ADD_CONTACT and REMOVE_CONTACT are additions too: notices for new incidents go to a team's contacts
+// (contacts.ts), never to its members. Webhook URLs are only returned masked.
 
 async function requireTeams(names: string[], field: string) {
   const known = new Set((await db.listTeams()).map((t) => t.name));
@@ -309,6 +312,10 @@ function teamName(value: unknown): string {
   if (typeof value !== 'string' || !value.trim() || value !== value.trim() || value.length > 64)
     invalid('Team_Name must be 1-64 characters without leading or trailing spaces.');
   return value;
+}
+
+function contactOut(id: number, channel: string, address: string) {
+  return { Contact_ID: id, Contact_Channel: channel, Contact: maskAddress(channel, address) };
 }
 
 function username(value: unknown): string {
@@ -329,8 +336,26 @@ app.post('/teams', async (req, res) => {
     case 'REMOVE':
       await db.removeTeam(name);
       return res.json({ Team_Name: name, Status: 'Removed' });
-    case 'GET':
-      return res.json({ Team_Name: name, Members: (await db.getTeam(name)).members, Status: 'Team Received' });
+    case 'GET': {
+      const team = await db.getTeam(name);
+      return res.json({
+        Team_Name: name,
+        Members: team.members,
+        Contacts: team.contacts.map((c) => contactOut(c.id, c.channel, c.address)),
+        Status: 'Team Received',
+      });
+    }
+    case 'ADD_CONTACT': {
+      const channel = checkChannel(b.Contact_Channel);
+      const address = checkContact(channel, b.Contact);
+      const id = await db.addTeamContact(name, channel, address);
+      return res.json({ Team_Name: name, ...contactOut(id, channel, address), Status: 'Contact added' });
+    }
+    case 'REMOVE_CONTACT': {
+      if (!Number.isSafeInteger(b.Contact_ID) || b.Contact_ID < 1) invalid('Contact_ID must be a positive integer.');
+      await db.removeTeamContact(name, b.Contact_ID);
+      return res.json({ Team_Name: name, Contact_ID: b.Contact_ID, Status: 'Contact removed' });
+    }
     case 'ADD_USER': {
       const user = username(b.Username);
       await db.addMember(name, user);
@@ -342,7 +367,7 @@ app.post('/teams', async (req, res) => {
       return res.json({ Team_Name: name, Username: user, Status: 'User removed' });
     }
     default:
-      invalid('Method must be one of NEW, REMOVE, ADD_USER, REMOVE_USER, GET, LIST.');
+      invalid('Method must be one of NEW, REMOVE, ADD_USER, REMOVE_USER, ADD_CONTACT, REMOVE_CONTACT, GET, LIST.');
   }
 });
 
@@ -352,7 +377,8 @@ function credential(value: string) {
   return `scrypt$${salt.toString('hex')}$${scryptSync(value, salt, 32).toString('hex')}`;
 }
 
-// Users (contract v1.0.2): who can act through X-User, and where their notifications go (Contact). Add them
+// Users (contract v1.0.2): who can act through X-User. Contact is kept as profile information only: notices go
+// to teams (/teams ADD_CONTACT), not to users. Add them
 // to teams with /teams ADD_USER. GET, LIST, Display_Name and Contact_Channel are extensions. The service actors
 // and Unknown can't be taken as usernames.
 app.post('/users', async (req, res) => {

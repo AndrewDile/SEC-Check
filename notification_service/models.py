@@ -78,12 +78,21 @@ class Incident(IncidentCreate):
 
 class Recipient(BaseModel):
     """
-    One way to reach one team. The Core API sends one per contact method of every team.
+    One way to reach one or more teams. The Core API sends one per contact of every team, and
+    one `log` recipient for a team with no contacts. Teams that share a contact share one
+    recipient. Notices go to teams only, never to individual users.
+
     """
 
-    recipient_id: str
-    team_name: str
-    channel: str = Field(..., examples=["email", "sms", "ms_teams"])
+    recipient_id: str = Field(..., examples=["team:LEGAL:12", "team:CYBER1:log"])
+    """
+    `team:<team>:<contact id>`, or `team:<team>:log`. Never contains the address.
+    """
+    team_name: str = Field(..., examples=["LEGAL", "LEGAL, CYBER1"])
+    """
+    The team, or a comma-separated list of the teams sharing this contact.
+    """
+    channel: str = Field(..., examples=["email", "slack", "ms_teams"])
     address: str
     """
     What the channel needs: an email address, a phone number, a webhook URL, ...

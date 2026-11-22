@@ -145,15 +145,24 @@ components:
     # Notifications ---------------------------------------------------------
 
     Recipient:
-      description: One way to reach one team. The Core API sends one per contact method of every team.
+      description: |
+        One way to reach one or more teams. The Core API sends one per contact of every team, and
+        one `log` recipient for a team with no contacts. Teams that share a contact share one
+        recipient. Notices go to teams only, never to individual users.
       type: object
       required: [recipient_id, team_name, channel, address]
       properties:
-        recipient_id: { type: string }
-        team_name: { type: string }
+        recipient_id:
+          type: string
+          description: "`team:<team>:<contact id>`, or `team:<team>:log`. Never contains the address."
+          examples: ["team:LEGAL:12", "team:CYBER1:log"]
+        team_name:
+          type: string
+          description: The team, or a comma-separated list of the teams sharing this contact.
+          examples: [LEGAL, "LEGAL, CYBER1"]
         channel:
           type: string
-          examples: [email, sms, ms_teams]
+          examples: [email, slack, ms_teams]
         address:
           type: string
           description: "What the channel needs: an email address, a phone number, a webhook URL, ..."

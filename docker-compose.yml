@@ -119,6 +119,13 @@ services:
       CORE_API_URL: http://api:3001
       CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
+      # Email; with SMTP_HOST empty, email notices fail as not set up. Slack and Teams need nothing here.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       - api
     networks: [notify]

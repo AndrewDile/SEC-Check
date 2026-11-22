@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from 'mysql2/promise';
 import { addBusinessDays, FILING_BUSINESS_DAYS, newYorkDate } from '../calendar.js';
+import { maskAddress } from '../contacts.js';
 import { current } from '../context.js';
 import {
   type AuditEntry,
@@ -11,6 +12,7 @@ import {
   DbError,
   type Incident,
   type Severity,
+  type TeamContact,
   type Ticket,
   type Urgency,
   type User,
@@ -30,6 +32,7 @@ const GENESIS = '0'.repeat(64);
 // Children before parents, for deletes
 const SCOPED_TABLES = [
   'team_members',
+  'team_contacts',
   'ticket_version_teams',
   'ticket_claims',
   'notifications',
@@ -577,6 +580,7 @@ export class MySqlDb implements Database {
           throw new DbError('INVALID_DATA', `Team ${name} is used by existing tickets and can't be removed.`);
       }
       await c.query('DELETE FROM team_members WHERE scope_id = ? AND team_name = ?', [scope, name]);
+      await c.query('DELETE FROM team_contacts WHERE scope_id = ? AND team_name = ?', [scope, name]);
       await c.query('DELETE FROM teams WHERE scope_id = ? AND team_name = ?', [scope, name]);
       await this.audit(c, undefined, 'TEAM_REMOVED', { name });
     });
@@ -589,7 +593,16 @@ export class MySqlDb implements Database {
       'SELECT username FROM team_members WHERE scope_id = ? AND team_name = ? ORDER BY added_at, username',
       [current().scope, name],
     );
-    return { name, members: rows.map((r) => r.username as string) };
+    return { name, members: rows.map((r) => r.username as string), contacts: await this.teamContacts(name) };
+  }
+
+  private async teamContacts(team: string, c: Conn = this.pool): Promise<TeamContact[]> {
+    const rows = await this.rows(
+      c,
+      'SELECT contact_id, channel, address FROM team_contacts WHERE scope_id = ? AND team_name = ? ORDER BY contact_id',
+      [current().scope, team],
+    );
+    return rows.map((r) => ({ id: r.contact_id, channel: r.channel, address: r.address }));
   }
 
   async listTeams() {
@@ -632,25 +645,59 @@ export class MySqlDb implements Database {
     });
   }
 
+  async addTeamContact(team: string, channel: string, address: string) {
+    return this.tx(async (c) => {
+      await this.requireTeam(c, team, true);
+      // No unique index: the address is too long for one. The team row lock serializes adds.
+      if ((await this.teamContacts(team, c)).some((t) => t.channel === channel && t.address === address))
+        throw new DbError('INVALID_DATA', 'The team already has this contact.');
+      const [result] = await c.query<ResultSetHeader>(
+        'INSERT INTO team_contacts (scope_id, team_name, channel, address, added_at) VALUES (?, ?, ?, ?, ?)',
+        [current().scope, team, channel, address, new Date()],
+      );
+      const id = result.insertId;
+      await this.audit(c, undefined, 'TEAM_CONTACT_ADDED', {
+        team,
+        contactId: id,
+        channel,
+        address: maskAddress(channel, address),
+      });
+      return id;
+    });
+  }
+
+  async removeTeamContact(team: string, contactId: number) {
+    await this.tx(async (c) => {
+      await this.requireTeam(c, team, true);
+      const [result] = await c.query<ResultSetHeader>(
+        'DELETE FROM team_contacts WHERE scope_id = ? AND team_name = ? AND contact_id = ?',
+        [current().scope, team, contactId],
+      );
+      if (result.affectedRows === 0) throw new DbError('INVALID_DATA', `Team ${team} has no contact ${contactId}.`);
+      await this.audit(c, undefined, 'TEAM_CONTACT_REMOVED', { team, contactId });
+    });
+  }
+
   async listContacts(): Promise<Contact[]> {
     const rows = await this.rows(
       this.pool,
-      `SELECT t.team_name, u.username, u.contact_channel, u.contact_address FROM teams t
-       LEFT JOIN team_members m ON m.scope_id = t.scope_id AND m.team_name = t.team_name
-       LEFT JOIN users u ON u.scope_id = m.scope_id AND u.username = m.username
-       WHERE t.scope_id = ? ORDER BY t.created_at, t.team_name, u.username`,
+      `SELECT t.team_name, c.contact_id, c.channel, c.address FROM teams t
+       LEFT JOIN team_contacts c ON c.scope_id = t.scope_id AND c.team_name = t.team_name
+       WHERE t.scope_id = ? ORDER BY t.created_at, t.team_name, c.contact_id`,
       [current().scope],
     );
-    return rows.map((r) =>
-      r.username
-        ? {
-            team: r.team_name,
-            username: r.username,
-            channel: r.contact_channel,
-            address: r.contact_address ?? r.username,
-          }
-        : { team: r.team_name, channel: 'log', address: r.team_name },
-    );
+    // One recipient per channel and address, so teams sharing a webhook or mailbox get one notice
+    const byAddress = new Map<string, Contact>();
+    for (const r of rows) {
+      const contact = r.contact_id
+        ? { recipientId: `team:${r.team_name}:${r.contact_id}`, channel: r.channel, address: r.address }
+        : { recipientId: `team:${r.team_name}:log`, channel: 'log', address: r.team_name };
+      const key = `${contact.channel}\n${contact.address}`;
+      const seen = byAddress.get(key);
+      if (seen) seen.teams.push(r.team_name);
+      else byAddress.set(key, { ...contact, teams: [r.team_name] });
+    }
+    return [...byAddress.values()];
   }
 
   // /users

@@ -46,8 +46,7 @@ part of the change.
    - The Core API routes in `api/src/services.ts` (`/ingest/*` and `/notif/*`), including the
      required-field checks, and the calls the Core API makes to the services' own APIs.
    - `api/src/db/` if a stored field changed. Schema changes need a **new** file in
-     `db/migrations/`. Migrations only run when the database volume is created, so the new
-     file must also be applied by hand to existing databases, including the server's (see
+     `db/migrations/`, which the Core API applies when it starts (see
      `docs/pages/operations.md`).
 
 5. **Update the docs.** `docs/pages/data-model.md` lists the main payload shapes by hand, and

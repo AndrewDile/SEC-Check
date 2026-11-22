@@ -53,9 +53,9 @@ and PR. **Every push to `main` deploys to production (EC2)**, so work on a branc
   file is meant to differ: it lists only what that service needs.
 - **The specs aren't enforced on the Core API.** A contract change also means updating
   `api/src/services.ts` (`/ingest/*`, `/notif/*`) and its required-field checks.
-- **Schema changes are manual.** Migrations in `db/migrations/` run only when the `db-data` volume
-  is created. Add a new numbered file instead of editing `001_initial.sql`, and apply it by hand
-  to existing databases, including the server's, before deploying code that needs it
+- **Schema changes go in a new migration.** The Core API applies each `db/migrations/*.sql` it
+  hasn't run yet when it starts (`api/src/db/migrate.ts`). Add a new numbered file instead of
+  editing an existing one. A migration that fails partway stops the Core API from starting
   (`docs/pages/operations.md`).
 - **The Core API's `/system` endpoints are a shared interface.** Other teams' testers call them
   per the course's API spec; don't change their paths or payloads.

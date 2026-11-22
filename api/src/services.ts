@@ -83,10 +83,10 @@ function notificationId(incidentId: string, added: string[]) {
 async function notify(db: Database, incident: { id: string }, added: string[] = []) {
   if (!NOTIFIER_URL) return;
   const id = notificationId(incident.id, added);
-  // Each team member at their contact; a team with no members gets one notice in the log
+  // Each team at its contacts; a team with none gets one notice in the log. Members aren't notified.
   const recipients = (await db.listContacts()).map((c) => ({
-    recipient_id: `${c.team}:${c.username ?? c.channel}`,
-    team_name: c.team,
+    recipient_id: c.recipientId,
+    team_name: c.teams.join(', '),
     channel: c.channel,
     address: c.address,
   }));

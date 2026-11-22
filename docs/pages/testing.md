@@ -6,10 +6,10 @@
 |---|---|---|---|
 | Tester self-tests | `tester/tests/` | 35 | Nothing. Runs against the tester's own mock system |
 | Core API calendar tests | `api/test/calendar.test.ts` | 2 | Nothing |
-| Core API database tests | `api/test/db.test.ts` | 28 | A MySQL it can wipe. Skips unless `DB_USER` is set |
-| Core API HTTP tests | `api/test/api.test.ts` | 47 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
+| Core API database tests | `api/test/db.test.ts` | 31 | A MySQL it can wipe. Skips unless `DB_USER` is set |
+| Core API HTTP tests | `api/test/api.test.ts` | 49 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
 | Worker unit tests | `ingestion_worker/tests/test_matching.py`, `test_worker.py` | 26 | Nothing. The Core API and feeds are faked |
-| Notifier unit tests | `notification_service/tests/` | 3 | Nothing |
+| Notifier unit tests | `notification_service/tests/` | 21 | Nothing. The Core API, SMTP and the Slack and Teams webhooks are faked |
 | Worker end-to-end tests | `ingestion_worker/tests/test_e2e.py` | 5 | The whole stack with the worker and notifier, reading `mock_feeds.py` (`docker-compose.e2e.yml`). Skips unless `E2E_SYSTEM_URL` is set |
 | Cross-team suite | `tester/secheck_tester/suite.py` | 70 | The whole stack. Run through the tester against `/system` |
 
@@ -17,7 +17,7 @@
 
 - **Web app:** its tests (a mock Core API and unit tests) live in the pod's `Web Dev/` folder.
 - **Ingestion worker and notification service:** only the code above. The feed parsers, EDGAR's
-  filtering, delivery channels and the notifier's API have no tests.
+  filtering, the `log` channel and the notifier's report to the Core API have no unit tests.
 
 ## `./test.sh`
 
