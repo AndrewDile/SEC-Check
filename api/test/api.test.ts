@@ -699,7 +699,7 @@ describe.skipIf(!API)('Core API pod contract', () => {
         return { status: res.status, body: await res.json() };
       };
       const events = async (id: string) =>
-        (await post('/logs', { Incident_ID: id, Timestamp: TS })).body.Audit_Log as {
+        (await post('/logs', { Incident_ID: id, Timestamp: TS })).body.Audit_Entries as {
           Event: string;
           Actor: string;
           Details: { matches?: { dependency_id: string }[] };
