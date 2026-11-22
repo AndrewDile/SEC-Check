@@ -1,5 +1,6 @@
 # For the end-to-end tests (ingestion_worker/tests/test_e2e.py): the real worker and notifier,
-# reading fake feeds. The worker polls hourly, so what the tests see comes from its catch-up.
+# reading fake feeds and emailing a fake mail server. The worker polls hourly, so what the tests see
+# comes from its catch-up.
 services:
   feed-mock:
     build:
@@ -21,4 +22,26 @@ services:
       EDGAR_POLL_INTERVAL_S: 3600
     depends_on:
       feed-mock:
+        condition: service_healthy
+
+  # Catches the notifier's email. The tests read it through Mailpit's API on localhost.
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    environment:
+      # A login, as a real server requires. Mailpit only offers one unencrypted if told to.
+      MP_SMTP_AUTH: alerts@example.com:e2e-password
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-18025}:8025"
+    networks: [notify]
+
+  notification-service:
+    environment:
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURITY: none
+      SMTP_USER: alerts@example.com
+      SMTP_PASSWORD: e2e-password
+    depends_on:
+      mailpit:
         condition: service_healthy

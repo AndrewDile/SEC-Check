@@ -10,7 +10,7 @@
 | Core API HTTP tests | `api/test/api.test.ts` | 49 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
 | Worker unit tests | `ingestion_worker/tests/test_matching.py`, `test_worker.py` | 26 | Nothing. The Core API and feeds are faked |
 | Notifier unit tests | `notification_service/tests/` | 21 | Nothing. The Core API, SMTP and the Slack and Teams webhooks are faked |
-| Worker end-to-end tests | `ingestion_worker/tests/test_e2e.py` | 5 | The whole stack with the worker and notifier, reading `mock_feeds.py` (`docker-compose.e2e.yml`). Skips unless `E2E_SYSTEM_URL` is set |
+| Worker and notifier end-to-end tests | `ingestion_worker/tests/test_e2e.py` | 6 | The whole stack with the worker and notifier, reading `mock_feeds.py` and emailing [Mailpit](https://mailpit.axllent.org/), a fake mail server (`docker-compose.e2e.yml`). Skips unless `E2E_SYSTEM_URL` is set; the email test also needs `E2E_MAILPIT_URL` |
 | Cross-team suite | `tester/secheck_tester/suite.py` | 61 | The whole stack. Run through the tester against `/system` |
 
 **Not covered by any test in this repo:**
@@ -27,7 +27,7 @@ This runs everything, the same way CI does, against a throwaway stack:
   database. Your dev stack and its data aren't touched, and it can run while the dev stack is up.
 - **Its own settings:** it reads `.env.example`, never `.env`.
 - **Its own ports:** Caddy on `localhost:18080` and MySQL on `127.0.0.1:13306` (`HTTP_PORT` and
-  `DB_HOST_PORT` in `docker-compose.yml`), not 80 and 3306.
+  `DB_HOST_PORT` in `docker-compose.yml`), not 80 and 3306. Mailpit's API is on `127.0.0.1:18025`.
 - **Always removed:** when it finishes, passed, failed or interrupted, it runs `docker compose down -v`
   for that project. On a failure it first saves the container logs to
   `$TMPDIR/sec-check-test-compose.log` (`/tmp/...` by default), and prints them in CI.
@@ -47,7 +47,7 @@ The steps:
    `http://localhost:18080/system` and the database on `127.0.0.1:13306`.
 3. Runs `tester/run_tests.py http://caddy/system --tester http://localhost:18080/tester`, which
    exits nonzero unless all 61 tests pass.
-4. Starts the worker, notifier and mock feeds, and runs `test_e2e.py` against them. It runs last
+4. Starts the worker, notifier, mock feeds and Mailpit, and runs `test_e2e.py` against them. It runs last
    because those containers would report incidents during the other suites.
 
 The cross-team suite runs in its own test session, and its report includes the Core API's code coverage and request
