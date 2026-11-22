@@ -33,7 +33,11 @@ This runs everything, the same way CI does:
 3. Runs the tester self-tests, the worker and notifier unit tests, then `npm test` in `api/` against `http://localhost/system` and
    the database on `127.0.0.1`.
 4. Runs `tester/run_tests.py http://caddy/system --tester http://localhost/tester`, which
+<<<<<<< HEAD
    exits nonzero unless all 61 tests pass.
+=======
+   exits nonzero unless all 70 tests pass.
+>>>>>>> 8de4d0dbb1b0e33d08aaf7b5323a5296bef24223
 5. Starts the worker, notifier and mock feeds, runs `test_e2e.py` against them, and removes them
    again. It runs last because those containers would report incidents during the other suites.
 
