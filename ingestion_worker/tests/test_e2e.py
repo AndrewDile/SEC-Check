@@ -1,8 +1,8 @@
 """End to end: a dependency added through the Core API, through the real worker and notifier
 containers, to incidents in the database and delivered notices, including email that reaches a mail
-server (Mailpit). WIPES the real data.
+server (Mailpit) and posts that reach a fake Slack and Teams. WIPES the real data.
 
-Runs only when E2E_SYSTEM_URL and E2E_MAILPIT_URL are set, against docker-compose.e2e.yml, which points the worker at
+Runs only when E2E_SYSTEM_URL, E2E_MAILPIT_URL and E2E_WEBHOOKS_URL are set, against docker-compose.e2e.yml, which points the worker at
 mock_feeds.py and polls only hourly. So anything seen here within seconds came from the catch-up.
 """
 
@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 SYSTEM = os.environ.get("E2E_SYSTEM_URL")
 MAILPIT = os.environ.get("E2E_MAILPIT_URL")
+WEBHOOKS = os.environ.get("E2E_WEBHOOKS_URL")
 TIMEOUT_S = 60
 
 
@@ -72,11 +73,15 @@ def delivered(incident_id: str, count: int) -> list[dict]:
     return wait_until(reported, f"{count} notification results for {incident_id}")
 
 
-def mailpit(path: str, method: str = "GET") -> dict:
-    request = urllib.request.Request(f"{MAILPIT}/api/v1{path}", method=method)
+def call(url: str, method: str = "GET"):
+    request = urllib.request.Request(url, method=method)
     with urllib.request.urlopen(request, timeout=30) as response:
         body = response.read()
-    return json.loads(body) if method == "GET" else {}
+    return json.loads(body) if method == "GET" else None
+
+
+def mailpit(path: str, method: str = "GET"):
+    return call(f"{MAILPIT}/api/v1{path}", method)
 
 
 @unittest.skipUnless(SYSTEM, "E2E_SYSTEM_URL is not set")
@@ -170,3 +175,45 @@ class EmailNotice(unittest.TestCase):
         self.assertIn("CVE-E2E-RECENT", email["Subject"])
         self.assertIn("Quillgate Server", email["Text"])
         self.assertIn(f"/app/#/incidents/{incident_id}", email["Text"])
+
+
+@unittest.skipUnless(SYSTEM and WEBHOOKS, "E2E_SYSTEM_URL or E2E_WEBHOOKS_URL is not set")
+class WebhookNotice(unittest.TestCase):
+    """Slack and Teams, at their own host names, which lead to mock_webhooks.py."""
+
+    def notice(self, channel: str, url: str) -> tuple[str, dict]:
+        """Report an incident to a team with this contact: the incident's id, and what was posted."""
+        post("/reset", {"method": "RESET"})
+        call(WEBHOOKS, "DELETE")
+        post("/teams", {"Team_Name": "LEGAL", "Method": "NEW"})
+        contact = {"Contact_Channel": channel, "Contact": url}
+        post("/teams", {"Team_Name": "LEGAL", "Method": "ADD_CONTACT", **contact})
+
+        add_dependency("Quillgate Server")
+        incident_id = wait_for_incident("CVE-E2E-RECENT")["Incident_ID"]
+        results = delivered(incident_id, 1)[0]["Details"]["results"]
+        self.assertEqual([r["status"] for r in results], ["delivered"], results)
+        posts = call(WEBHOOKS)
+        self.assertEqual([f"https://{p['host']}{p['path']}" for p in posts], [url])
+        return incident_id, posts[0]["body"]
+
+    def test_an_incident_is_posted_to_slack(self):
+        incident_id, body = self.notice("slack", "https://hooks.slack.com/services/T0/B0/e2e")
+        header, section, actions = body["blocks"]
+        self.assertIn("CVE-E2E-RECENT", header["text"]["text"])
+        self.assertIn("Quillgate Server", section["text"]["text"])
+        self.assertTrue(
+            actions["elements"][0]["url"].endswith(f"/app/#/incidents/{incident_id}"), actions
+        )
+
+    def test_an_incident_is_posted_to_teams(self):
+        # The query string holds a real webhook's signature, so it has to arrive unchanged
+        url = "https://e2e.environment.api.powerplatform.com/workflows/abc?api-version=1&sig=e2e-_x"
+        incident_id, body = self.notice("ms_teams", url)
+        card = body["attachments"][0]["content"]
+        texts = [block["text"] for block in card["body"]]
+        self.assertIn("CVE-E2E-RECENT", texts[0])
+        self.assertTrue(any("Quillgate Server" in text for text in texts), texts)
+        self.assertTrue(
+            card["actions"][0]["url"].endswith(f"/app/#/incidents/{incident_id}"), card["actions"]
+        )

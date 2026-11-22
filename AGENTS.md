@@ -35,8 +35,8 @@ docker compose up --build
 ```
 
 `./test.sh` runs every suite against a throwaway stack, as CI does: its own compose project
-(`sec-check-test`), a fresh database, `.env.example`'s settings, and ports 18080, 13306 and 18025. It
-removes the stack when it finishes, even after a failure, and doesn't touch the dev stack. It
+(`sec-check-test`), a fresh database, `.env.example`'s settings, and ports 18080, 13306, 18025 and
+18004. It removes the stack when it finishes, even after a failure, and doesn't touch the dev stack. It
 takes a few minutes, so ask before running it.
 
 CI (`.github/workflows/ci.yml`) runs lint, format and `./verify.sh`, then tests, on every push
