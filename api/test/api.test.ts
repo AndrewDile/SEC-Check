@@ -144,6 +144,34 @@ describe.skipIf(!API)('Core API pod contract', () => {
         note: 'Contained before any data left.',
       });
     });
+
+    it('exports Form 8-K Item 1.05 for a MATERIAL incident only (REQ-06)', async () => {
+      const form8k = () => post('/incidents', { Incident_ID: ID, Method: 'FORM_8K', Timestamp: TS });
+      await newIncident(undefined, { Severity: 'HIGH', Dependency: 'auth-service-v2' });
+      expectError(await form8k(), 'INVALID_DATA');
+      await newTicket(undefined, { Description: 'Tokens rotated.', Team_list: ['CYBER1'] });
+      await newTicket(undefined, { Description: 'DECISION by alice: Materiality=MATERIAL; ...' });
+      await post('/notifier', { Team_Names: ['LEGAL'], Method: 'CLAIM', Ticket_Number: `${ID}_1` });
+      const deadline = (await editIncident({ Materiality: 'MATERIAL', Note: '40,000 records exposed.' })).body
+        .Filing_Deadline;
+
+      const r = await form8k();
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({
+        Incident_ID: ID,
+        Item_1_05: {
+          Nature: 'Updated.\n\nTokens rotated.',
+          Scope: { Severity: 'HIGH', Dependency_Name: 'auth-service-v2', Teams_Involved: ['CYBER1', 'LEGAL'] },
+          Material_Impact: '40,000 records exposed.',
+        },
+        Filing: { Filing_Deadline: deadline },
+        Source_Tickets: [`${ID}_1_1`, `${ID}_2_1`],
+      });
+      expect(r.body.Item_1_05.Timing.Events).toHaveLength(2);
+      expect(r.body.Filing.Determined_At).toBe(r.body.Item_1_05.Timing.Determined_At);
+      expect((await auditLog()).at(-1)?.Event).toBe('FORM_8K_READ');
+      expectError(await post('/incidents', { Incident_ID: 'nope', Method: 'FORM_8K', Timestamp: TS }), 'UUID_DNE');
+    });
   });
 
   describe('/tickets', () => {

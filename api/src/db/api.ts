@@ -156,6 +156,8 @@ export interface Database {
 
   // /logs
   getLog(incidentId: string): Promise<{ incident: Incident; ticketIds: string[]; entries: AuditEntry[] }>; // UUID_DNE
+  // Every ticket version and audit entry, oldest first, for form8k.ts. UUID_DNE; INVALID_DATA unless MATERIAL
+  getForm8k(incidentId: string): Promise<{ incident: Incident; tickets: Ticket[]; entries: AuditEntry[] }>;
   logEvent(incidentId: string | undefined, eventType: string, payload: unknown): Promise<void>;
   getAuditLog(incidentId: string): Promise<AuditEntry[]>;
   verifyAuditChain(): Promise<{ ok: boolean; brokenAtSeq?: number }>;

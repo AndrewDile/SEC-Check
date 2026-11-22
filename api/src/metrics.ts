@@ -6,6 +6,7 @@ const METHODS = new Set([
   'NEW',
   'EDIT',
   'GET',
+  'FORM_8K',
   'LIST',
   'CLAIM',
   'NOTIFY',

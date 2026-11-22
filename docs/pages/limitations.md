@@ -33,8 +33,6 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
   the web app is rejected as `X-User`.
 - **Dependencies are bare names.** They have no version, CPE, PURL or CIK, so the worker can
   match only on names, and EDGAR's CIK match never fires.
-- **The web app doesn't show the filing deadline yet.** The Core API returns `Filing_Deadline`,
-  but the web app's 8-K view still has it as `null` (gap G-8).
 - **Holidays end with 2027.** `business_calendar` has to be extended for later years.
 - **Partial writes.** The web app's multi-step operations aren't atomic; a failure partway leaves
   the earlier steps in place, and reports them in `Completed_Steps`.

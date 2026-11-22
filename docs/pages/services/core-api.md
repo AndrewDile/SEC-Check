@@ -68,6 +68,7 @@ worker and notifier call are in their `core_api.openapi.yaml` files, shown on th
 | `EDIT` | `Incident_ID`, `Timestamp`, `Description`; optional fields as for `NEW`, and `Note` | Updates the fields it's given. `Dependency: ""` clears the dependency. Changing `Materiality` away from `MATERIAL` needs a `Note` (`INVALID_DATA` without one) | `Edited` |
 | `GET` | `Incident_ID`, `Timestamp` | Returns the incident, and audits the read | `Data Fetched` |
 | `LIST` | nothing | Every incident (extension for the web app), audited as one `INCIDENTS_LISTED` | `Listed` |
+| `FORM_8K` | `Incident_ID`, `Timestamp` | The Form 8-K Item 1.05 export (extension for the web app, below). `INVALID_DATA` unless the incident is `MATERIAL`. Audited as `FORM_8K_READ` | `8-K View Assembled` |
 
 The response has `Incident_ID`, `Description`, `Dependency` (when set), `Materiality`,
 `Severity`, `Urgency` and `Timestamp`. While the incident is `MATERIAL` it also has
@@ -76,6 +77,20 @@ determination, which later changes never restart (see [Data model](../data-model
 returns `{"Incidents": [...]}`.
 
 `Note` is an extension: the reason for the edit, stored in the audit entry.
+
+`FORM_8K` arranges the incident's tickets and audit entries by Item 1.05's sections, in one
+transaction (`api/src/form8k.ts`). It helps prepare the filing; it doesn't fill it in or file it.
+
+- **`Item_1_05.Nature`:** the incident description, then the latest version of each ticket. The
+  web app's tickets recording user actions (`INTAKE`, `EDIT`, `DECISION`) are left out.
+- **`Item_1_05.Scope`:** `Severity`, `Dependency_Name`, and `Teams_Involved` (teams on any ticket
+  version, and the claiming teams).
+- **`Item_1_05.Timing`:** `Discovered_At` (the incident's `Timestamp`), `Determined_At` (the first
+  `MATERIAL` determination), and `Events`: every ticket version, oldest first, summarized to 300
+  characters.
+- **`Item_1_05.Material_Impact`:** the `Note` of every `EDIT` sent with `Materiality: MATERIAL`.
+- **`Filing`:** `Determined_At` and `Filing_Deadline` (`YYYY-MM-DD`).
+- **`Source_Tickets`:** every ticket version's strong ID.
 
 ### `POST /tickets`
 

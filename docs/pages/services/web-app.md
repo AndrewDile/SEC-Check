@@ -41,12 +41,8 @@ The server routes requests from the contract:
 - **Queue:** the tickets visible to a team, filtered by claim state.
 - **Log:** the incident's ticket history. `/incidents/{id}/log/entries` (extension) gives each
   version in full.
-- **Form 8-K view** (`MATERIAL` incidents only) assembles Item 1.05's content from the incident
-  and its tickets:
-    - **Nature:** the incident description plus the non-audit tickets.
-    - **Scope:** severity, dependency and the teams involved.
-    - **Timing:** discovered, determined, and an event list.
-    - **Material impact:** the decision rationales.
+- **Form 8-K view** (`MATERIAL` incidents only) shows the Core API's Item 1.05 export
+  (`/incidents FORM_8K`): nature, scope, timing, material impact and the filing deadline.
 - **Dependencies:** add, check and remove. Listing them is an extension.
 - **Teams** (Teams page): create and remove teams, and add or remove members.
     - **Teams** are stored by the Core API (`/teams`). Only existing teams can be used on tickets,
@@ -143,7 +139,7 @@ specs. Each one is handled in `core_client.py`, so handlers see only Web App fie
 | G-5 | Core has no list operations; it uses `Method: "LIST"`, which our Core API supports |
 | G-6 | Authentication is undecided; it uses development sign-in |
 | G-7 | Core can only `GET` the latest ticket version; it asks for strong IDs, and our Core API answers them |
-| G-8 | No filing deadline from Core; `Filing_Deadline` is always `null` |
+| G-8 | The filing deadline is a Core extension (`Filing_Deadline`, `YYYY-MM-DD`); it passes it through |
 | G-9 | `Ticket_ID_List` may come as one comma-joined string; it splits it |
 | G-10 | Core wants `Description` even on `GET`; it sends one |
 

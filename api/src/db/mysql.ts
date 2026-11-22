@@ -863,6 +863,29 @@ export class MySqlDb implements Database {
     });
   }
 
+  async getForm8k(incidentId: string) {
+    return this.tx(async (c) => {
+      const { scope } = current();
+      const incident = await this.incident(c, incidentId);
+      if (incident.materiality !== 'MATERIAL')
+        throw new DbError('INVALID_DATA', 'Form 8-K export is only available for incidents marked MATERIAL.');
+      const versions = await this.rows(
+        c,
+        'SELECT * FROM ticket_versions WHERE scope_id = ? AND incident_id = ? ORDER BY created_at, ticket_number, version',
+        [scope, incidentId],
+      );
+      const tickets = await this.withDetails(c, versions);
+      const entries = (
+        await this.rows(c, 'SELECT * FROM audit_log WHERE scope_id = ? AND incident_id = ? ORDER BY seq', [
+          scope,
+          incidentId,
+        ])
+      ).map(toEntry);
+      await this.audit(c, incidentId, 'FORM_8K_READ', {});
+      return { incident, tickets, entries };
+    });
+  }
+
   async logEvent(incidentId: string | undefined, eventType: string, payload: unknown) {
     await this.tx((c) => this.audit(c, incidentId, eventType, payload));
   }

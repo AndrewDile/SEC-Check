@@ -6,8 +6,9 @@
 |---|---|---|---|
 | Tester self-tests | `tester/tests/` | 34 | Nothing. Runs against the tester's own mock system |
 | Core API calendar tests | `api/test/calendar.test.ts` | 2 | Nothing |
+| Core API Form 8-K tests | `api/test/form8k.test.ts` | 2 | Nothing |
 | Core API database tests | `api/test/db.test.ts` | 31 | A MySQL it can wipe. Skips unless `DB_USER` is set |
-| Core API HTTP tests | `api/test/api.test.ts` | 49 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
+| Core API HTTP tests | `api/test/api.test.ts` | 50 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
 | Worker unit tests | `ingestion_worker/tests/test_matching.py`, `test_worker.py` | 26 | Nothing. The Core API and feeds are faked |
 | Notifier unit tests | `notification_service/tests/` | 21 | Nothing. The Core API, SMTP and the Slack and Teams webhooks are faked |
 | Worker and notifier end-to-end tests | `ingestion_worker/tests/test_e2e.py` | 6 | The whole stack with the worker and notifier, reading `mock_feeds.py` and emailing [Mailpit](https://mailpit.axllent.org/), a fake mail server (`docker-compose.e2e.yml`). Skips unless `E2E_SYSTEM_URL` is set; the email test also needs `E2E_MAILPIT_URL` |
