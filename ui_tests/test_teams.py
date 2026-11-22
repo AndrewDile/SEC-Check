@@ -1,7 +1,7 @@
 """Creating teams and managing their members (Teams page), and using new teams elsewhere.
 
-Teams and their members are stored by the Core API database (/teams). Every test starts
-from the default teams and memberships, which the Core API's /reset puts back.
+Teams and their members are stored by the Core API database (/teams). A reset leaves no
+teams, so every test starts from ui_base.TEAM_FIXTURE, created after the reset.
 """
 
 import json
@@ -211,7 +211,15 @@ class TeamMembershipRules(unittest.TestCase):
     """The Web App API's team routes, checked directly (no browser)."""
 
     def setUp(self):
+        core = Core()
+        core.reset()
+        core.create_teams()
+
+    def test_a_reset_leaves_no_teams(self):
         Core().reset()
+        self.assertEqual(web("GET", "/teams")[1]["Teams"], [])
+        self.assertEqual(web("GET", "/team-members")[1]["Teams"], [])
+        self.assertEqual(web("GET", "/session")[1]["Teams"], [])
 
     def test_create_and_list(self):
         status, body = web("POST", "/teams", {"Team_Name": "Audit"})

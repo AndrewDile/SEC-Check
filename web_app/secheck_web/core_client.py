@@ -16,6 +16,7 @@ them until it adds list operations.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import urllib.error
 import urllib.request
@@ -47,9 +48,12 @@ ORIGIN_WEBAPP = "webapp"
 
 
 def weak_ticket_id(ticket_id: str) -> str:
-    """Ticket_type_strong '<id>_<n>_<v>' -> Ticket_type_weak '<id>_<n>'."""
-    parts = str(ticket_id).split("_")
-    return "_".join(parts[:2]) if len(parts) >= 3 else str(ticket_id)
+    """Ticket_type_strong '<id>_<n>_<v>' -> Ticket_type_weak '<id>_<n>'.
+
+    Read from the right, since the Incident_ID may itself contain '_'.
+    """
+    m = re.fullmatch(r"(.+_[0-9]+)_[0-9]+", str(ticket_id))
+    return m.group(1) if m else str(ticket_id)
 
 
 def normalize_ticket_id_list(value: Any) -> List[str]:
@@ -348,7 +352,16 @@ class CoreClient:
         return self._post(PATH_DEPENDENCIES, {"dp_name": dp_name, "method": "NEW"}, steps)
 
     def dp_match(self, steps, dp_name: str) -> Dict[str, Any]:
-        return self._post(PATH_DEPENDENCIES, {"dp_name": dp_name, "method": "MATCH"}, steps)
+        """MATCH; a missing dependency is the Core API's DP_DNE, reported here (and by the
+        Web App API) as status "Does not Exist"."""
+        try:
+            return self._post(PATH_DEPENDENCIES, {"dp_name": dp_name, "method": "MATCH"}, steps)
+        except WebAppError as exc:
+            if exc.error != "DP_DNE":
+                raise
+            if steps is not None:
+                steps.append(f"{PATH_DEPENDENCIES} MATCH")
+            return {"dp_name": dp_name, "status": "Does not Exist"}
 
     def dp_remove(self, steps, dp_name: str) -> Dict[str, Any]:
         return self._post(PATH_DEPENDENCIES, {"dp_name": dp_name, "method": "REMOVE"}, steps)
@@ -363,7 +376,7 @@ class CoreClient:
         return str(match_response.get("status", "")).strip().lower() == "exists"
 
     # ------------------------------------------------------------------ teams
-    # NEW, REMOVE, ADD_USER and REMOVE_USER are the spec's methods; GET (with Members) and LIST
+    # NEW, DELETE, ADD_USER and REMOVE_USER are the spec's methods; GET (with Members) and LIST
     # were added so the Web App can read teams and their members back.
     def team_list(self, steps) -> List[str]:
         data = self._post(PATH_TEAMS, {"Method": "LIST"}, steps)
@@ -376,7 +389,7 @@ class CoreClient:
         return self._post(PATH_TEAMS, {"Team_Name": team_name, "Method": "NEW"}, steps)
 
     def team_remove(self, steps, team_name: str) -> Dict[str, Any]:
-        return self._post(PATH_TEAMS, {"Team_Name": team_name, "Method": "REMOVE"}, steps)
+        return self._post(PATH_TEAMS, {"Team_Name": team_name, "Method": "DELETE"}, steps)
 
     def team_add_user(self, steps, team_name: str, username: str) -> Dict[str, Any]:
         body = {"Team_Name": team_name, "Method": "ADD_USER", "Username": username}

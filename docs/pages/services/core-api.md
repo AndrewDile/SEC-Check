@@ -53,7 +53,7 @@ worker and notifier call are in their `core_api.openapi.yaml` files, shown on th
       `Ticket_Number` is split at its last `_`: `A_1_1` is ticket 1 of incident `A_1`.
     - `Description`: at most 5000 characters.
     - Team names on `/tickets` (`Team_list`) and `/notifier` (`Team_Names`) must be teams that
-      exist, i.e. were created through `/teams` or restored by a reset. Others: `INVALID_DATA`.
+      exist, i.e. were created through `/teams`. A reset leaves none. Others: `INVALID_DATA`.
     - Any field too long for its column: `INVALID_DATA`.
 - **Transactions:** each database method runs in one transaction, audit entry included, and is
   retried up to 5 times on a deadlock. A response is built from what that one transaction read.
@@ -110,7 +110,7 @@ It needs `Incident_ID` and `Timestamp`. It returns the incident's description, i
 fields, and:
 
 - `Ticket_ID_List`: every ticket version's strong ID, in the order they were created.
-- `Audit_Log` (extension): the incident's audit entries, oldest first, as `{"Seq", "Timestamp",
+- `Audit_Entries` (extension): the incident's audit entries, oldest first, as `{"Seq", "Timestamp",
   "Event", "Actor", "Details"}`. The read itself is audited as `LOG_READ`, after the entries are
   read.
 
@@ -119,7 +119,7 @@ fields, and:
 | `Method` | Needs | Does | `Status` |
 |---|---|---|---|
 | `NEW` | `Team_Name` | Creates the team (`TEAM_EXISTS` if it's already there) | `Created` |
-| `REMOVE` (or `DELETE`) | `Team_Name` | Removes it and its memberships (`TEAM_DNE` if it isn't there). A team that tickets, notifications or claims refer to stays: `INVALID_DATA` | `Removed` |
+| `DELETE` | `Team_Name` | Removes it and its memberships (`TEAM_DNE` if it isn't there). A team that tickets, notifications or claims refer to stays: `INVALID_DATA` | `Removed` |
 | `GET` | `Team_Name` | Checks it exists (`TEAM_DNE` if not), and returns its `Members` (extension) | `Team Received` |
 | `LIST` | nothing | Every team name, oldest first, as `Team_List` | `Teams Listed` |
 | `ADD_USER` | `Team_Name`, `Username` | Adds the user to the team. `TEAM_DNE`, `USER_DNE` if the user doesn't exist, `USER_EXISTS` if they're already a member | `User added` |
@@ -154,7 +154,7 @@ The contract spells the path both ways, so both work. It uses lowercase `method`
 | `method` | Does | `status` |
 |---|---|---|
 | `NEW` | Adds the dependency (`DP_EXISTS` if it's already there) and, for the real data, tells the worker | `Added` |
-| `MATCH` | Checks whether it exists | `Exists` or `Does not Exist` |
+| `MATCH` | Checks that it exists (`DP_DNE` if it isn't there) | `Exists` |
 | `REMOVE` | Removes it (`DP_DNE` if it isn't there) and, for the real data, tells the worker | `Removed` |
 | `LIST` | Every dependency name (extension) | `Listed` |
 
@@ -162,8 +162,8 @@ A test session's dependencies never reach the worker, so tests can't make it mat
 
 ### `POST /reset`
 
-Send `{"method": "RESET"}`. It deletes the request's data and restores its default teams, users
-and audit genesis:
+Send `{"method": "RESET"}`. It deletes the request's data, teams included, and restores its
+default users (in no teams) and audit genesis:
 
 - **With `X-Session-ID`:** only that test session's data.
 - **Without:** the real data, and it tells the worker to delete every dependency.
@@ -181,7 +181,7 @@ These follow the course's cross-team testing interface (`src/testing.ts`). Each 
 own copy of the data (a scope), so sessions run in parallel and never touch the real data.
 
 - **`POST /test/setup`:** send `{"session_id": "...", "setup": {...}?}`.
-    - Creates the session's data with the default teams and users, and starts measuring it.
+    - Creates the session's data with the default users and no teams, and starts measuring it.
     - Returns 201 `{"session_id"}`.
     - Session IDs are single use: an active or earlier session's ID gives 409.
     - Limits: at most `MAX_TEST_SESSIONS` active sessions and `SETUPS_PER_MINUTE` setups per

@@ -54,7 +54,9 @@ function formData(form, arrays = []) {
   }
   return out;
 }
-const weakId = ticketId => String(ticketId).split("_").slice(0, 2).join("_");
+// "<id>_<n>_<v>" -> "<id>_<n>"; read from the right, since the Incident_ID may contain "_"
+const weakId = ticketId => String(ticketId).replace(/_\d+$/, "");
+const enc = encodeURIComponent;
 
 // ------------------------------------------------------------------ API + notices
 async function api(method, path, body) {
@@ -241,7 +243,7 @@ async function viewIncidents() {
         <div class="row">
           <label>Third-party dependency <select name="Dependency_Name" id="dep-select" data-testid="intake-dependency"><option value="">None</option></select></label>
           <label>Discovered at <span class="hint">Leave blank to use now</span><input type="datetime-local" name="Timestamp" data-testid="intake-timestamp"></label>
-          <label>Incident ID <span class="hint">Leave blank to generate one</span><input name="Incident_ID" inputmode="numeric" pattern="[0-9]+" data-testid="intake-id"></label>
+          <label>Incident ID <span class="hint">Leave blank to generate one</span><input name="Incident_ID" maxlength="64" data-testid="intake-id"></label>
         </div>
         <div class="row">
           <label>Materiality <select name="Materiality" data-testid="intake-materiality">${options(state.enums.Materiality, "UNDECIDED")}</select></label>
@@ -252,7 +254,7 @@ async function viewIncidents() {
       </form>
     </section>
     <form class="inline-form" id="open-form" data-testid="open-form">
-      <label>Open an incident by ID <input name="id" inputmode="numeric" pattern="[0-9]+" required data-testid="open-id"></label>
+      <label>Open an incident by ID <input name="id" maxlength="64" required data-testid="open-id"></label>
       <button data-testid="open-submit">Open</button>
     </form>
     <section id="list" data-testid="incident-list"><p class="muted">Loading incidents…</p></section>`;
@@ -268,7 +270,7 @@ async function viewIncidents() {
     if (body.Timestamp) body.Timestamp = new Date(body.Timestamp).toISOString();
     const created = await api("POST", "/incidents", body);
     state.pendingNotice = `Incident ${created.Incident_ID} created.`;
-    location.hash = `#/incidents/${created.Incident_ID}`;
+    location.hash = `#/incidents/${enc(created.Incident_ID)}`;
   });
 
   api("GET", "/dependencies").then(d => {
@@ -298,7 +300,7 @@ async function viewIncidents() {
         </tr>`).join("")}</tbody></table></div>`;
     // The ID is a real link (keyboard and screen readers); clicking anywhere on the row also opens it.
     list.querySelectorAll("tr.link").forEach(tr => {
-      tr.addEventListener("click", ev => { if (!ev.target.closest("a")) location.hash = `#/incidents/${tr.dataset.id}`; });
+      tr.addEventListener("click", ev => { if (!ev.target.closest("a")) location.hash = `#/incidents/${enc(tr.dataset.id)}`; });
     });
   } catch (err) {
     list.removeAttribute("aria-busy");
@@ -405,19 +407,19 @@ async function viewIncident(id) {
     if (body.Description === inc.Description) delete body.Description;
     if (body.Dependency_Name === (inc.Dependency_Name || "")) delete body.Dependency_Name;
     if (!Object.keys(body).length) return ok("Nothing changed.");
-    await api("PATCH", `/incidents/${inc.Incident_ID}`, body);
+    await api("PATCH", `/incidents/${enc(inc.Incident_ID)}`, body);
     await viewIncident(id); ok("Details saved.");
   });
   onSubmit($("#decision-form"), async f => {
     const body = formData(f);
-    const r = await api("PUT", `/incidents/${inc.Incident_ID}/decision`, body);
+    const r = await api("PUT", `/incidents/${enc(inc.Incident_ID)}/decision`, body);
     await viewIncident(id);
     ok(`Decision recorded${r.Notified_Teams.length ? `; notified ${r.Notified_Teams.join(", ")}` : ""}.`);
   });
   onSubmit($("#ticket-form"), async f => {
     const body = formData(f, ["Team_list"]);
     body.Notify = f.Notify.checked;
-    const r = await api("POST", `/incidents/${inc.Incident_ID}/tickets`, body);
+    const r = await api("POST", `/incidents/${enc(inc.Incident_ID)}/tickets`, body);
     await viewIncident(id);
     ok(`Ticket ${r.Ticket_ID} logged${r.Notified_Teams.length ? `; notified ${r.Notified_Teams.join(", ")}` : ""}.`);
   });
@@ -432,17 +434,17 @@ async function viewIncident(id) {
   if (fullLog.open) loadLog();
 
   document.querySelectorAll("form[data-claim]").forEach(f => onSubmit(f, async () => {
-    const r = await api("POST", `/tickets/${f.dataset.claim}/claim`, { Team_Name: f.Team_Name.value });
+    const r = await api("POST", `/tickets/${enc(f.dataset.claim)}/claim`, { Team_Name: f.Team_Name.value });
     await viewIncident(id); ok(`${r.Status} ${r.Ticket_Number} for ${f.Team_Name.value}.`);
   }));
   document.querySelectorAll("form[data-notify]").forEach(f => onSubmit(f, async () => {
     const teams = formData(f, ["Team_Names"]).Team_Names;
-    await api("POST", `/tickets/${f.dataset.notify}/notify`, { Team_Names: teams });
+    await api("POST", `/tickets/${enc(f.dataset.notify)}/notify`, { Team_Names: teams });
     ok(`Notified ${teams.join(", ")} about ${f.dataset.notify}.`);
   }));
   document.querySelectorAll("form[data-edit]").forEach(f => onSubmit(f, async () => {
     const body = formData(f, ["Team_list"]);
-    const r = await api("PATCH", `/incidents/${inc.Incident_ID}/tickets/${f.dataset.edit}`, body);
+    const r = await api("PATCH", `/incidents/${enc(inc.Incident_ID)}/tickets/${enc(f.dataset.edit)}`, body);
     await viewIncident(id); ok(`Saved as new version ${r.Ticket_ID}.`);
   }));
 }
@@ -588,7 +590,7 @@ async function viewQueue() {
       out.innerHTML = `<div class="table-wrap"><table>
         <thead><tr><th>Ticket</th><th>Details</th><th>Severity</th><th>Urgency</th><th>Notified</th><th></th></tr></thead>
         <tbody>${q.Tickets.map(x => `<tr data-testid="queue-row" data-ticket-number="${esc(x.Ticket_number)}">
-          <td class="num"><a href="#/incidents/${esc(x.Incident_ID)}">${esc(x.Ticket_number)}</a></td>
+          <td class="num"><a href="#/incidents/${esc(enc(x.Incident_ID))}">${esc(x.Ticket_number)}</a></td>
           <td class="desc"><div class="clamp" data-no-toggle>${esc(x.Ticket_Description)}</div></td>
           <td>${esc(label(x.ticket_severity))}</td><td>${esc(label(x.ticket_urgency))}</td>
           <td>${esc(fmtTime(x.Notified_At))}</td>
@@ -597,7 +599,7 @@ async function viewQueue() {
         </tr>`).join("")}</tbody></table></div>`;
       out.querySelectorAll("button[data-claim]").forEach(b => b.addEventListener("click", async () => {
         b.disabled = true;
-        try { await api("POST", `/tickets/${b.dataset.claim}/claim`, { Team_Name: t }); ok(`Claimed ${b.dataset.claim} for ${t}.`); await load(); }
+        try { await api("POST", `/tickets/${enc(b.dataset.claim)}/claim`, { Team_Name: t }); ok(`Claimed ${b.dataset.claim} for ${t}.`); await load(); }
         catch (err) { b.disabled = false; fail(err); }
       }));
     } catch (err) {

@@ -272,7 +272,7 @@ app.post('/notifier', async (req, res) => {
   res.json({ UUID: uuid, Ticket_Number: `${ref.incidentId}_${ref.ticketNumber}`, Status: status });
 });
 
-// Audit_Log is an extension: the incident's audit entries, oldest first (AC-02, AC-04)
+// Audit_Entries is an extension: the incident's audit entries, oldest first (AC-02, AC-04)
 app.post('/logs', async (req, res) => {
   const b = req.body ?? {};
   const id = incidentId(b.Incident_ID);
@@ -285,7 +285,7 @@ app.post('/logs', async (req, res) => {
     Severity: incident.severity,
     Urgency: incident.urgency,
     Ticket_ID_List: ticketIds,
-    Audit_Log: entries.map((e) => ({
+    Audit_Entries: entries.map((e) => ({
       Seq: e.seq,
       Timestamp: e.occurredAt.toISOString(),
       Event: e.eventType,
@@ -297,7 +297,7 @@ app.post('/logs', async (req, res) => {
 });
 
 // Teams: only teams created here (or the defaults /reset restores) can be used on tickets and in /notifier.
-// GET and LIST are additions to the spec's NEW, REMOVE, ADD_USER, REMOVE_USER so teams can be read back.
+// GET and LIST are additions to the spec's NEW, DELETE, ADD_USER, REMOVE_USER so teams can be read back.
 
 async function requireTeams(names: string[], field: string) {
   const known = new Set((await db.listTeams()).map((t) => t.name));
@@ -322,11 +322,11 @@ app.post('/teams', async (req, res) => {
   if (b.Method === 'LIST')
     return res.json({ Team_List: (await db.listTeams()).map((t) => t.name), Status: 'Teams Listed' });
   const name = teamName(b.Team_Name);
-  switch (b.Method === 'DELETE' ? 'REMOVE' : b.Method) {
+  switch (b.Method) {
     case 'NEW':
       await db.createTeam(name);
       return res.json({ Team_Name: name, Status: 'Created' });
-    case 'REMOVE':
+    case 'DELETE':
       await db.removeTeam(name);
       return res.json({ Team_Name: name, Status: 'Removed' });
     case 'GET':
@@ -342,7 +342,7 @@ app.post('/teams', async (req, res) => {
       return res.json({ Team_Name: name, Username: user, Status: 'User removed' });
     }
     default:
-      invalid('Method must be one of NEW, REMOVE, ADD_USER, REMOVE_USER, GET, LIST.');
+      invalid('Method must be one of NEW, DELETE, ADD_USER, REMOVE_USER, GET, LIST.');
   }
 });
 
@@ -398,7 +398,10 @@ app.post(['/dependencies', '/dependancies'], async (req, res) => {
       if (real) worker.put(name);
       return res.json({ dp_name: name, status: 'Added' });
     case 'MATCH':
-      return res.json({ dp_name: name, status: (await db.hasDependency(name)) ? 'Exists' : 'Does not Exist' });
+      // The spec says MATCH needs the dependency to exist, so a missing one is DP_DNE (like REMOVE)
+      if (!(await db.hasDependency(name)))
+        throw new DbError('DP_DNE', 'The dependency name does not exist in the system.');
+      return res.json({ dp_name: name, status: 'Exists' });
     case 'REMOVE':
       await db.removeDependency(name);
       if (real) worker.delete(name);

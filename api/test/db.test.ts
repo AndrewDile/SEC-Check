@@ -25,7 +25,11 @@ describe.skipIf(!enabled)('MySqlDb', () => {
   const newIncident = (incidentId = '100', extra = {}) =>
     db.createIncident({ incidentId, description: 'Test incident', reportedAt: at, ...extra });
 
-  beforeEach(() => db.reset());
+  // A reset leaves no teams; the tests use these three
+  beforeEach(async () => {
+    await db.reset();
+    for (const team of ['LEGAL', 'CYBER1', 'CYBER2']) await db.createTeam(team);
+  });
   afterAll(() => db.close());
 
   describe('addIncidentMatches', () => {
@@ -264,7 +268,8 @@ describe.skipIf(!enabled)('MySqlDb', () => {
   });
 
   describe('users and team members', () => {
-    it('restores the default users and members on reset', async () => {
+    it('restores the default users, in no teams, on reset', async () => {
+      await db.reset();
       expect((await db.listUsers()).map((u) => u.username).sort()).toEqual([
         'alice',
         'bob',
@@ -272,7 +277,7 @@ describe.skipIf(!enabled)('MySqlDb', () => {
         'core-gateway',
         'dana',
       ]);
-      expect((await db.getUser('dana')).teams).toEqual(['CYBER1', 'LEGAL']);
+      expect((await db.listUsers()).every((u) => u.teams.length === 0)).toBe(true);
     });
 
     it('adds members, and notifies them at their contact', async () => {
@@ -280,7 +285,7 @@ describe.skipIf(!enabled)('MySqlDb', () => {
       await db.createTeam('EMPTY');
       await db.addMember('CYBER2', 'erin');
       expect(await dbError(db.addMember('CYBER2', 'erin'))).toBe('USER_EXISTS');
-      expect((await db.getTeam('CYBER2')).members).toEqual(['bob', 'core-gateway', 'erin']);
+      expect((await db.getTeam('CYBER2')).members).toEqual(['erin']);
       const contacts = await db.listContacts();
       expect(contacts).toContainEqual({
         team: 'CYBER2',
@@ -288,7 +293,6 @@ describe.skipIf(!enabled)('MySqlDb', () => {
         channel: 'email',
         address: 'erin@example.com',
       });
-      expect(contacts).toContainEqual({ team: 'CYBER2', username: 'bob', channel: 'log', address: 'bob' });
       expect(contacts).toContainEqual({ team: 'EMPTY', channel: 'log', address: 'EMPTY' });
       expect(await dbError(db.addMember('CYBER2', 'mallory'))).toBe('USER_DNE');
       expect(await dbError(db.addMember('GHOST', 'erin'))).toBe('TEAM_DNE');
@@ -323,14 +327,14 @@ describe.skipIf(!enabled)('MySqlDb', () => {
   });
 
   describe('reset', () => {
-    it('wipes everything and restores the default teams', async () => {
+    it('wipes everything, teams included', async () => {
       await newIncident();
       await db.addDependency('Acme');
       await db.createTeam('EXTRA');
       await db.reset();
       expect(await db.listIncidents()).toEqual([]);
       expect(await db.listDependencies()).toEqual([]);
-      expect((await db.listTeams()).map((t) => t.name).sort()).toEqual(['CYBER1', 'CYBER2', 'LEGAL']);
+      expect(await db.listTeams()).toEqual([]);
       expect(await db.verifyAuditChain()).toEqual({ ok: true });
     });
   });

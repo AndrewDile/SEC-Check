@@ -11,6 +11,7 @@ const METHODS = new Set([
   'NOTIFY',
   'MATCH',
   'REMOVE',
+  'DELETE',
   'RESET',
   'ADD_USER',
   'REMOVE_USER',

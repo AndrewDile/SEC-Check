@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, List, Optional
 
 from .. import audit
@@ -145,8 +144,8 @@ def log_entries(ctx: Context, req: Request) -> Dict[str, Any]:
     latest version are still shown in full and older ones get Details_Available: false.
     """
     incident_id = req.path_params["Incident_ID"]
-    if not re.fullmatch(r"[0-9]+", incident_id):
-        raise invalid("Incident_ID has an invalid format.")
+    if not 1 <= len(incident_id) <= 64:
+        raise invalid("Incident_ID must be 1-64 characters.")
     log = ctx.core.logs(None, incident_id)
     latest: Dict[str, Dict[str, Any]] = {}
     entries: List[Dict[str, Any]] = []

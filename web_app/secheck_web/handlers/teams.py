@@ -65,7 +65,7 @@ def create_team(ctx: Context, req: Request):
 
 
 @extension(
-    "DELETE", "/teams/{Team_Name}", note="Remove a team and its members (Core /teams REMOVE)"
+    "DELETE", "/teams/{Team_Name}", note="Remove a team and its members (Core /teams DELETE)"
 )
 def remove_team(ctx: Context, req: Request) -> Dict[str, Any]:
     name = req.path_params["Team_Name"]

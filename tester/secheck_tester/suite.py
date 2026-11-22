@@ -2,7 +2,9 @@
 
 T-01..T-40 are the original tester suite. T-41..T-54 are ported from the Web
 App team's mock-Core test suite ("Web Dev/tests"): the checks from it that a
-client can observe through the Core API alone. T-55..T-70 cover the /teams and
+client can observe through the Core API alone. /notifier is not in the shared
+spec, so its tests (T-27..T-32, T-41, T-42, T-44) were removed; the other IDs
+are unchanged so reports stay comparable. T-55..T-70 cover the /teams and
 /users paths (creating teams and users, memberships, and using new teams on tickets).
 
 Each test is a function taking a Context. It sends Core API calls with
@@ -146,11 +148,6 @@ class Context:
 
     def get_ticket(self, incident_id: str, number: str) -> Reply:
         return self.ticket("GET", incident_id, "", Ticket_number=number)
-
-    def notifier(self, method: str, teams: List[str], number: str) -> Reply:
-        return self.call(
-            "notifier", {"Team_Names": teams, "Method": method, "Ticket_Number": number}
-        )
 
     def logs(self, incident_id: str, timestamp: Optional[str] = None) -> Reply:
         return self.call("logs", {"Incident_ID": incident_id, "Timestamp": timestamp or self.ts()})
@@ -492,57 +489,6 @@ def t26(ctx: Context):
     return "Future log timestamp rejected."
 
 
-# ====================================================================== notifier (AC-04)
-def notifier_body_matches(body: Dict[str, Any], incident_id: str, number: str) -> None:
-    expect_id(body, "UUID", incident_id)
-    expect_field(body, "Ticket_Number", number)
-
-
-@test("T-27", "Notify all teams about a ticket (NOTIFY)", ("AC-04",), after=("T-15",))
-def t27(ctx: Context):
-    body = expect_ok(ctx.notifier("NOTIFY", ctx.teams, ctx.state["ticket1"]), "Notified team")
-    notifier_body_matches(body, ctx.iid("A"), ctx.state["ticket1"])
-    return "Notified %s." % ", ".join(ctx.teams)
-
-
-@test("T-28", "One team claims the ticket (CLAIM)", ("AC-04",), after=("T-15",))
-def t28(ctx: Context):
-    body = expect_ok(ctx.notifier("CLAIM", [ctx.teams[1]], ctx.state["ticket1"]), "Claimed ticket")
-    notifier_body_matches(body, ctx.iid("A"), ctx.state["ticket1"])
-    return "%s claimed %s." % (ctx.teams[1], ctx.state["ticket1"])
-
-
-@test("T-29", "The claim is visible on the ticket", ("AC-04",), after=("T-28",), db=True)
-def t29(ctx: Context):
-    body = expect_ok(ctx.get_ticket(ctx.iid("A"), ctx.state["ticket1"]), "Displayed")
-    if "Ticket_Claim" not in body and "Claimed_By" not in body:
-        return "Ticket read back; the system doesn't return claim fields (Ticket_Claim is not in the OpenAPI, G-3)."
-    expect_field(body, "Ticket_Claim", "CLAIMED", required=False)
-    expect_field(body, "Claimed_By", ctx.teams[1], required=False)
-    return "Ticket shows the claim."
-
-
-@test("T-30", "Reject a claim with no team", ("AC-04",), after=("T-15",))
-def t30(ctx: Context):
-    expect_error(ctx.notifier("CLAIM", [], ctx.state["ticket1"]), "INVALID_DATA")
-    return "Claim with empty Team_Names rejected."
-
-
-@test("T-31", "Reject an invalid notifier Method", ("AC-04",), after=("T-15",))
-def t31(ctx: Context):
-    expect_error(ctx.notifier("PING", [ctx.teams[0]], ctx.state["ticket1"]), "INVALID_DATA")
-    return "Method PING rejected."
-
-
-@test("T-32", "Reject a claim on an unknown ticket", ("AC-04",))
-def t32(ctx: Context):
-    expect_error(
-        ctx.notifier("CLAIM", [ctx.teams[0]], ctx.iid("unknown") + "_1"),
-        ("UUID_DNE", "INVALID_DATA"),
-    )
-    return "Claim on unknown ticket rejected."
-
-
 # ====================================================================== dependencies (AC-05)
 @test("T-33", "Add a third-party dependency (NEW)", ("AC-05",))
 def t33(ctx: Context):
@@ -605,20 +551,6 @@ def t40(ctx: Context):
 
 
 # ====================================================================== ported from the Web App suite
-@test("T-41", "A second team cannot claim an already claimed ticket", ("AC-04",), after=("T-28",))
-def t41(ctx: Context):
-    expect_error(
-        ctx.notifier("CLAIM", [ctx.teams[2 % len(ctx.teams)]], ctx.state["ticket1"]), "INVALID_DATA"
-    )
-    return "Second claim by another team rejected."
-
-
-@test("T-42", "Reject a CLAIM naming more than one team", ("AC-04",), after=("T-17",))
-def t42(ctx: Context):
-    expect_error(ctx.notifier("CLAIM", ctx.teams[:2], ctx.state["ticket2"]), "INVALID_DATA")
-    return "CLAIM by two teams rejected."
-
-
 @test("T-43", "Reject a ticket assigned to an unknown team", ("AC-02", "AC-04"), after=("T-01",))
 def t43(ctx: Context):
     expect_error(
@@ -626,12 +558,6 @@ def t43(ctx: Context):
         "INVALID_DATA",
     )
     return "Team_list with an unknown team rejected."
-
-
-@test("T-44", "Reject NOTIFY with no teams", ("AC-04",), after=("T-15",))
-def t44(ctx: Context):
-    expect_error(ctx.notifier("NOTIFY", [], ctx.state["ticket1"]), "INVALID_DATA")
-    return "NOTIFY with empty Team_Names rejected."
 
 
 @test(
@@ -903,7 +829,7 @@ def t65(ctx: Context):
     return "Duplicate, unknown user, unknown team and missing Username rejected."
 
 
-@test("T-66", "A new team can be assigned, notified and claim", ("AC-04",), after=("T-56", "T-01"))
+@test("T-66", "A new team can be assigned to a ticket", ("AC-04",), after=("T-56", "T-01"))
 def t66(ctx: Context):
     a, team = ctx.iid("A"), ctx.team_name("main")
     body = expect_ok(
@@ -912,9 +838,7 @@ def t66(ctx: Context):
     number = new_ticket_number(ctx, body, a)
     ctx.state["team_ticket"] = number
     expect_field(expect_ok(ctx.get_ticket(a, number), "Displayed"), "Team_List", [team])
-    expect_ok(ctx.notifier("NOTIFY", [team], number), "Notified team")
-    expect_ok(ctx.notifier("CLAIM", [team], number), "Claimed ticket")
-    return "Ticket %s assigned to, notified to and claimed by %r." % (number, team)
+    return "Ticket %s assigned to %r." % (number, team)
 
 
 @test("T-67", "A team that tickets use can't be removed", ("AC-04",), after=("T-66",))
