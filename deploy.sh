@@ -13,6 +13,8 @@ cd "$(dirname "$0")"
 HOST=${DEPLOY_HOST:?Set DEPLOY_HOST}
 KEY=${DEPLOY_KEY:?Set DEPLOY_KEY}
 DIR=sec-check
+# Enough to rebuild every image from fresh base images (about 1.2 GB), with some to spare
+MIN_FREE_MB=1500
 
 ssh_() { ssh -i "$KEY" "$HOST" "$@"; }
 
@@ -46,6 +48,19 @@ if [ ! -f /swapfile ]; then
   echo '/swapfile none swap defaults 0 0' | sudo tee -a /etc/fstab >/dev/null
 fi
 EOF
+
+# After setup, which installs Docker and may create the swap file. Nothing is copied or stopped
+# until this passes, so a full disk leaves the running site alone.
+echo "==> Checking disk space"
+free_mb=$(ssh_ 'df --output=avail -BM /var/lib/docker | tail -n 1 | tr -dc 0-9')
+# Not `-lt`: if df printed something unexpected, this fails too
+if ! [ "$free_mb" -ge "$MIN_FREE_MB" ]; then
+  echo "Not enough disk space on the server: ${free_mb:-unknown} MB free, need $MIN_FREE_MB MB." >&2
+  echo "'sudo docker builder prune' on the server clears old build cache. Disk use now:" >&2
+  ssh_ 'df -h /var/lib/docker; sudo docker system df' >&2 || true
+  exit 1
+fi
+echo "$free_mb MB free"
 
 echo "==> Copying files"
 # Excluding .env also keeps --delete from removing the server's copy
