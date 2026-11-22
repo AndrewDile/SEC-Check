@@ -13,7 +13,7 @@ by changing `target_url`.
 secheck_tester/   the tester service
   server.py       POST /test/setup, POST /test/run, GET /test/report
   target.py       the ONLY place that knows the target's URLs and paths
-  suite.py        the 70 ordered tests (T-01..T-70)
+  suite.py        the 61 ordered tests (T-01..T-70, with gaps)
   judge.py        response -> pass / fail / error(source) / skip
   runner.py       runs the suite, abort handling, reads code coverage
   coverage.py     acceptance-criteria coverage (component: not yet measured)
@@ -60,7 +60,7 @@ python run_tests.py https://our-system.example.edu --tester https://our-tester.e
 
 To see failures being reported, start the mock with a fault:
 `--bug wrong-status | no-validation | crash-logs | unordered-logs | setup-fails |
-claim-steal | edit-drops-fields | log-latest-only | members-not-stored |
+edit-drops-fields | log-latest-only | members-not-stored |
 remove-used-team | no-teams-users`. `--bug ignore-session` makes
 the mock share one state across sessions, like a system that ignores
 `X-Session-ID` (the suite should still pass).
@@ -92,8 +92,8 @@ The tester touches the target in exactly three ways:
    It waits for `201` with the same ID. Any failure is passed back to the
    caller with the same status, message and source. Unreachable gives 500 /
    `communication`.
-2. **Core API project calls**: `POST /incidents`, `/tickets`, `/notifier`,
-   `/logs`, `/dependencies`, with the exact field names from the spec. Each
+2. **Core API project calls**: `POST /incidents`, `/tickets`, `/logs`,
+   `/dependencies`, `/teams`, `/users`, with the exact field names from the spec. Each
    request carries the session ID in the `X-Session-ID` header.
 3. **`GET {target}/test/report?session_id=…`** after the last project call.
    This reads `coverage.code`. If it's missing or malformed, the tester
@@ -158,12 +158,6 @@ Coverage counts what was exercised, not what passed.
 | T-24 | Log entries are in the order the actions happened | AC-02 | T-23 |
 | T-25 | Reject a log request for an unknown incident | AC-06 | - |
 | T-26 | Reject a log request with a future timestamp | AC-02 | T-01 |
-| T-27 | Notify all teams about a ticket (NOTIFY) | AC-04 | T-15 |
-| T-28 | One team claims the ticket (CLAIM) | AC-04 | T-15 |
-| T-29 | The claim is visible on the ticket | AC-04 | T-28 |
-| T-30 | Reject a claim with no team | AC-04 | T-15 |
-| T-31 | Reject an invalid notifier Method | AC-04 | T-15 |
-| T-32 | Reject a claim on an unknown ticket | AC-04 | - |
 | T-33 | Add a third-party dependency (NEW) | AC-05 | - |
 | T-34 | Reject a duplicate dependency | AC-05 | T-33 |
 | T-35 | Match a stored dependency (MATCH) | AC-05 | T-33 |
@@ -172,10 +166,7 @@ Coverage counts what was exercised, not what passed.
 | T-38 | A removed dependency no longer matches | AC-05 | T-37 |
 | T-39 | Reject removal of an unknown dependency | AC-05 | - |
 | T-40 | Reject an invalid dependency method | AC-05 | - |
-| T-41 | A second team cannot claim an already claimed ticket | AC-04 | T-28 |
-| T-42 | Reject a CLAIM naming more than one team | AC-04 | T-17 |
 | T-43 | Reject a ticket assigned to an unknown team | AC-02, AC-04 | T-01 |
-| T-44 | Reject NOTIFY with no teams | AC-04 | T-15 |
 | T-45 | Reject a ticket number that belongs to another incident | AC-02 | T-15, T-10 |
 | T-46 | Reject an unknown ticket number on a known incident | AC-02 | T-01 |
 | T-47 | Reject a ticket EDIT without Description | AC-02 | T-15 |
@@ -190,14 +181,14 @@ Coverage counts what was exercised, not what passed.
 | T-56 | Create a team (NEW) | AC-04 | - |
 | T-57 | A created team is listed and has no members | AC-04 | T-56 |
 | T-58 | Reject a duplicate team | AC-04 | T-56 |
-| T-59 | Reject GET and REMOVE of an unknown team | AC-04 | - |
+| T-59 | Reject GET and DELETE of an unknown team | AC-04 | - |
 | T-60 | Reject invalid `/teams` requests | AC-04 | - |
 | T-61 | Create a user (`/users NEW`) | AC-02 | - |
 | T-62 | Reject a duplicate user and a user without `Auth_Hash` | AC-02 | T-61 |
 | T-63 | Add a user to a team (ADD_USER) | AC-04 | T-56, T-61 |
 | T-64 | A team's members are stored | AC-04 | T-63 |
 | T-65 | Reject invalid membership changes | AC-04 | T-63 |
-| T-66 | A new team can be assigned, notified and claim | AC-04 | T-56, T-01 |
+| T-66 | A new team can be assigned to a ticket | AC-04 | T-56, T-01 |
 | T-67 | A team that tickets use can't be removed | AC-04 | T-66 |
 | T-68 | Remove a user from a team (REMOVE_USER) | AC-04 | T-64 |
 | T-69 | Remove an unused team and its members | AC-04 | T-61, T-01 |
@@ -210,6 +201,11 @@ team queue, the gateway translation) stays in the Web App's own tests, and
 `/tickets GET` by version ID (a proposed fix for gap G-7, not in the spec)
 and the `LIST` methods (gap G-5) were left out.
 
+`/notifier` (NOTIFY and CLAIM) isn't in the shared spec, so its tests were
+removed: T-27..T-32, T-41, T-42 and T-44. The other test IDs are unchanged, so
+reports and the table below stay comparable. Our own API and UI tests still
+cover `/notifier`, which the pod's Core API keeps.
+
 T-55..T-70 test the `/teams` and `/users` paths. Each run creates its own team
 (`Tester team <random>`) and user (`tester-<random>`), so runs don't collide
 even on a system that ignores `X-Session-ID`. Besides the spec's methods they use
@@ -218,9 +214,52 @@ checks follow the pod's Core API where the spec doesn't say: a team that
 tickets refer to can't be removed (T-67, `INVALID_DATA`), and removing a team
 removes its memberships (T-69).
 
+### Coverage by acceptance criterion
+
+Each test under the criteria it checks (a test can count for more than one), and by type.
+`Tests: none` marks part of a criterion the tester doesn't cover.
+
+```
+AC-01 │ REQ-01
+  Tests: T-01, T-02, T-36, T-52                       │ Type: success  │ Automated: yes, the tester creates and reads back incidents through the Core API
+  Tests: T-03, T-04, T-07, T-08, T-09, T-54           │ Type: failure  │ Automated: yes, invalid input must get the expected error
+  Tests: T-05, T-06, T-10, T-11                       │ Type: boundary │ Automated: yes, future timestamp, 5000-character limit, omitted fields default to UNDECIDED
+
+AC-02 │ REQ-02
+  Tests: T-15, T-16, T-17, T-18, T-23, T-24,          │ Type: success  │ Automated: yes, ticket actions are compared with /logs (versions, order, details)
+         T-48, T-49, T-50, T-66, T-69
+  Tests: T-19, T-20, T-22, T-43, T-45, T-46,          │ Type: failure  │ Automated: yes, badly formed tickets are rejected and not logged
+         T-47, T-54, T-67
+  Tests: T-21, T-26                                   │ Type: boundary │ Automated: yes, future timestamps are rejected; all timestamps are in UTC
+
+AC-03 │ REQ-03
+  Tests: T-12, T-13, T-15, T-52                       │ Type: success  │ Automated: yes, a marking is set, then read back and compared
+  Test: T-14                                          │ Type: failure  │ Automated: yes, marking an unknown incident is rejected
+  Tests: none                                         │ Type: failure  │ Automated: no, "moved to the correct location" has no Core API equivalent beyond team queues
+
+AC-04 │ REQ-04
+  Tests: T-55, T-56, T-61, T-63, T-64, T-66,          │ Type: success  │ Automated: yes, teams and users are configured and teams are assigned to tickets
+         T-68, T-69, T-70
+  Tests: T-43, T-58, T-59, T-60, T-62, T-65, T-67     │ Type: failure  │ Automated: yes, unknown teams on tickets and bad team or user setup are rejected
+  Test: T-57                                          │ Type: boundary │ Automated: yes, a team with zero members
+  Tests: none                                         │ Type: success  │ Automated: not by the tester, notify and claim use /notifier, which isn't in the shared spec (our API and UI tests cover it)
+  Tests: none                                         │ Type: boundary │ Automated: no, the tester doesn't read the audit-log order or test passed deadlines
+
+AC-05 │ REQ-05
+  Tests: T-33, T-35, T-36, T-37, T-38                 │ Type: success  │ Automated: yes, a dependency is added, matched, linked to an incident and removed
+  Tests: T-34, T-39, T-40, T-54                       │ Type: failure  │ Automated: yes, duplicates, unknown names and bad methods are rejected
+  Test: T-53                                          │ Type: boundary │ Automated: yes, dependency names with spaces
+  Tests: none                                         │ Type: boundary │ Automated: no, polling the incident feed needs the ingestion worker, which the tester can't drive
+
+AC-06 │ REQ-06
+  Tests: T-23, T-49, T-51                             │ Type: success  │ Automated: yes, /logs returns every ticket version and the incident's details
+  Test: T-25                                          │ Type: failure  │ Automated: yes, a log request for an unknown incident is rejected
+  Tests: none                                         │ Type: failure  │ Automated: partly, the 8-K view's rejection of non-material incidents is in the web app's UI tests, not the tester
+```
+
 Expected values come from the spec examples: Status strings `Created` /
 `Edited` / `Data Fetched` / `Logged` / `Displayed` / `Log Retrieved` /
-`Notified team` / `Claimed ticket` / `Added` / `Exists` / `Removed` /
+`Added` / `Exists` / `Removed` /
 `Teams Listed` / `Team Received` / `User added` / `User removed`, and errors
 `UUID_EXISTS`, `UUID_DNE`, `INVALID_DATA`, `DP_EXISTS`, `DP_DNE`, `TEAM_EXISTS`,
 `TEAM_DNE`, `USER_EXISTS`, `USER_DNE`.
@@ -242,10 +281,8 @@ spec allows.
 | Ticket_ID example is weak (`id_1`), spec says strong (`id_1_1`) | Accepts both | - |
 | `Ticket_ID_List` example is one comma-joined string (G-9) | Accepts both forms | - |
 | MATCH on a missing dependency: `DP_DNE` or `"Does not Exist"` | Accepts both | - |
-| Error type for an unknown ticket in `/notifier` | `UUID_DNE` or `INVALID_DATA` | - |
 | Ticket number from another incident, or one that doesn't exist (T-45, T-46) | `UUID_DNE` or `INVALID_DATA` | - |
-| Re-claim by the team that already holds the ticket | Not tested; only a claim by a *different* team must be rejected (T-41) | - |
-| Default team names | Uses `LEGAL, CYBER1, CYBER2` in ticket and notifier calls, and T-55 checks `/teams LIST` has them; the target must start each session with these teams | `TESTER_TEAMS` |
+| Team names | Creates `LEGAL, CYBER1, CYBER2` with `/teams NEW` before the tests (ignoring `TEAM_EXISTS` or any error), uses them in ticket calls, and T-55 checks `/teams LIST` has them. A target without a working `/teams` NEW must already have these teams | `TESTER_TEAMS` |
 | Target clock skew | Timestamps are 60 s behind the tester's clock and strictly increasing | - |
 
 ## Settings and time limits
@@ -275,6 +312,6 @@ The tester relies on the target system providing:
   are unique.
 
 The pod's Core API provides both in `api/src/testing.ts`. It keeps one session
-at a time: a successful setup wipes the database (like `/reset`, restoring the
-default teams), the previous session is forgotten, `X-Session-ID` is ignored,
+at a time: a successful setup wipes the database (like `/reset`, which leaves
+no teams), the previous session is forgotten, `X-Session-ID` is ignored,
 and `coverage.code` is reported as `null`/`null` for now.

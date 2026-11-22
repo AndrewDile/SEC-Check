@@ -39,7 +39,7 @@ def incidents() -> dict[str, dict]:
 def audit(incident_id: str) -> list[dict]:
     # Slightly in the past, because the API rejects future timestamps
     timestamp = (datetime.now(UTC) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return post("/logs", {"Incident_ID": incident_id, "Timestamp": timestamp})["Audit_Log"]
+    return post("/logs", {"Incident_ID": incident_id, "Timestamp": timestamp})["Audit_Entries"]
 
 
 def events(incident_id: str, name: str) -> list[dict]:
@@ -74,12 +74,16 @@ def delivered(incident_id: str, count: int) -> list[dict]:
 class DependencyCatchUp(unittest.TestCase):
     def setUp(self):
         post("/reset", {"method": "RESET"})
+        # A reset leaves no teams; with one, each notice has a recipient (the team's log notice)
+        post("/teams", {"Team_Name": "LEGAL", "Method": "NEW"})
 
     def test_product_only_name_finds_a_recent_incident_right_away(self):
         add_dependency("Quillgate Server")
         incident = wait_for_incident("CVE-E2E-RECENT")
         self.assertEqual(incident["Dependency"], "Quillgate Server")
-        for result in delivered(incident["Incident_ID"], 1)[0]["Details"]["results"]:
+        results = delivered(incident["Incident_ID"], 1)[0]["Details"]["results"]
+        self.assertTrue(results, "the notice reached no one")
+        for result in results:
             self.assertEqual(result["status"], "delivered")
         # Older matches this weak are not backfilled
         self.assertNotIn("CVE-E2E-OLD", incidents())

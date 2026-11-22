@@ -3,7 +3,7 @@
 import unittest
 
 from playwright.sync_api import expect
-from ui_base import UITestCase
+from ui_base import UITestCase, now
 
 
 class ReportIncident(UITestCase):
@@ -37,6 +37,41 @@ class ReportIncident(UITestCase):
         self.assertEqual(
             self.core.incident("555000111222")["Description"], "Phishing email reported."
         )
+
+    def test_incident_ids_like_the_core_api_accepts(self):
+        """Any 1-64 characters, not just digits: letters, '_', '-' and spaces."""
+        iid = self.report_incident("Vendor breach reported.", incident_id="INC_2026-11 a")
+        self.assertEqual(iid, "INC_2026-11 a")
+        self.log_ticket("Ask the vendor for logs.", teams=["CYBER1"])
+        number = iid + "_2"  # _1 is the intake audit ticket
+        expect(self.ticket_item(number)).to_contain_text("Ask the vendor for logs.")
+        item = self.ticket_item(number)
+        item.get_by_test_id("claim-team").select_option("CYBER1")
+        item.get_by_test_id("claim-submit").click()
+        self.expect_notice("for CYBER1")
+        self.assertEqual(self.core.ticket(iid, number).get("Claimed_By"), "CYBER1")
+        # Opening it by ID works too
+        self.go("#/incidents")
+        self.tid("open-id").fill(iid)
+        self.tid("open-id").press("Enter")
+        expect(self.tid("incident-id")).to_have_text(iid)
+
+    def test_incident_created_through_the_core_api_opens(self):
+        """An ID another system gave the Core API, like 'incident_859866259523'."""
+        iid = "incident_859866259523"
+        self.core.ok(
+            "/incidents",
+            {
+                "Incident_ID": iid,
+                "Method": "NEW",
+                "Timestamp": now(),
+                "Description": "Created by another system.",
+            },
+        )
+        self.go("#/incidents")
+        self.tid("incident-link").filter(has_text=iid).click()
+        expect(self.tid("incident-id")).to_have_text(iid)
+        expect(self.tid("incident-description")).to_have_text("Created by another system.")
 
     def test_description_is_required(self):
         self.tid("new-incident").click()

@@ -23,7 +23,9 @@ from secheck_tester.suite import SUITE, TestCase  # noqa: E402
 from secheck_tester.target import validate_target_url  # noqa: E402
 from test_tester import TesterHarness, call  # noqa: E402
 
-PORTED = ["T-%02d" % n for n in range(41, 55)]
+# T-41, T-42 and T-44 tested /notifier, which isn't in the shared spec
+PORTED = ["T-43"] + ["T-%02d" % n for n in range(45, 55)]
+NOTIFIER_TESTS = {"T-27", "T-28", "T-29", "T-30", "T-31", "T-32", "T-41", "T-42", "T-44"}
 
 
 def settings(**overrides):
@@ -50,7 +52,9 @@ def run_against(bug="none", **overrides):
 class PortedTests(unittest.TestCase):
     def test_suite_has_the_ported_tests_in_order(self):
         ids = [t.test_id for t in SUITE]
-        self.assertEqual(ids, ["T-%02d" % n for n in range(1, 71)])
+        self.assertEqual(
+            ids, ["T-%02d" % n for n in range(1, 71) if "T-%02d" % n not in NOTIFIER_TESTS]
+        )
         for t in SUITE:
             self.assertTrue(set(t.criteria) <= set(coverage.CRITERIA), t.test_id)
 
@@ -59,12 +63,6 @@ class PortedTests(unittest.TestCase):
         self.assertEqual(
             {tid: r[tid]["outcome"] for tid in PORTED}, {tid: "pass" for tid in PORTED}
         )
-
-    def test_second_team_claim_is_caught(self):
-        _, _, r = run_against("claim-steal")
-        self.assertEqual(r["T-41"]["outcome"], "fail")
-        self.assertIn("accepted", r["T-41"]["message"])
-        self.assertEqual(r["T-28"]["outcome"], "pass")
 
     def test_edit_dropping_fields_is_caught(self):
         _, _, r = run_against("edit-drops-fields")
@@ -272,7 +270,7 @@ class TesterBehaviour(unittest.TestCase):
         )
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("T-70", out.stdout)
-        self.assertIn("70 tests", out.stdout)
+        self.assertIn("61 tests", out.stdout)
 
 
 if __name__ == "__main__":

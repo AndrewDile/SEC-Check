@@ -25,7 +25,11 @@ describe.skipIf(!enabled)('MySqlDb', () => {
   const newIncident = (incidentId = '100', extra = {}) =>
     db.createIncident({ incidentId, description: 'Test incident', reportedAt: at, ...extra });
 
-  beforeEach(() => db.reset());
+  // A reset leaves no teams; the tests use these three
+  beforeEach(async () => {
+    await db.reset();
+    for (const team of ['LEGAL', 'CYBER1', 'CYBER2']) await db.createTeam(team);
+  });
   afterAll(() => db.close());
 
   describe('addIncidentMatches', () => {
@@ -264,7 +268,8 @@ describe.skipIf(!enabled)('MySqlDb', () => {
   });
 
   describe('users and team members', () => {
-    it('restores the default users and members on reset', async () => {
+    it('restores the default users, in no teams, on reset', async () => {
+      await db.reset();
       expect((await db.listUsers()).map((u) => u.username).sort()).toEqual([
         'alice',
         'bob',
@@ -272,14 +277,14 @@ describe.skipIf(!enabled)('MySqlDb', () => {
         'core-gateway',
         'dana',
       ]);
-      expect((await db.getUser('dana')).teams).toEqual(['CYBER1', 'LEGAL']);
+      expect((await db.listUsers()).every((u) => u.teams.length === 0)).toBe(true);
     });
 
     it('adds and removes members, who are never notified', async () => {
       await db.createUser({ username: 'erin', contactChannel: 'email', contactAddress: 'erin@example.com' });
       await db.addMember('CYBER2', 'erin');
       expect(await dbError(db.addMember('CYBER2', 'erin'))).toBe('USER_EXISTS');
-      expect((await db.getTeam('CYBER2')).members).toEqual(['bob', 'core-gateway', 'erin']);
+      expect((await db.getTeam('CYBER2')).members).toEqual(['erin']);
       expect((await db.listContacts()).map((c) => c.address)).not.toContain('erin@example.com');
       expect(await dbError(db.addMember('CYBER2', 'mallory'))).toBe('USER_DNE');
       expect(await dbError(db.addMember('GHOST', 'erin'))).toBe('TEAM_DNE');
@@ -326,14 +331,19 @@ describe.skipIf(!enabled)('MySqlDb', () => {
     });
 
     it('notifies each team at its contacts, once per shared contact, and in the log without any', async () => {
-      const legal = await db.addTeamContact('LEGAL', 'slack', SLACK);
-      await db.addTeamContact('CYBER1', 'slack', SLACK);
-      const email = await db.addTeamContact('CYBER1', 'email', 'cyber@example.com');
-      expect(await db.listContacts()).toEqual([
-        { recipientId: `team:LEGAL:${legal}`, teams: ['LEGAL', 'CYBER1'], channel: 'slack', address: SLACK },
-        { recipientId: `team:CYBER1:${email}`, teams: ['CYBER1'], channel: 'email', address: 'cyber@example.com' },
-        { recipientId: 'team:CYBER2:log', teams: ['CYBER2'], channel: 'log', address: 'CYBER2' },
-      ]);
+      const slack = await db.addTeamContact('CYBER1', 'slack', SLACK);
+      await db.addTeamContact('CYBER2', 'slack', SLACK);
+      const email = await db.addTeamContact('CYBER2', 'email', 'cyber@example.com');
+      const contacts = await db.listContacts();
+      // Teams created in the same millisecond sort by name, so LEGAL may come first or last
+      expect(contacts).toHaveLength(3);
+      expect(contacts).toEqual(
+        expect.arrayContaining([
+          { recipientId: `team:CYBER1:${slack}`, teams: ['CYBER1', 'CYBER2'], channel: 'slack', address: SLACK },
+          { recipientId: `team:CYBER2:${email}`, teams: ['CYBER2'], channel: 'email', address: 'cyber@example.com' },
+          { recipientId: 'team:LEGAL:log', teams: ['LEGAL'], channel: 'log', address: 'LEGAL' },
+        ]),
+      );
     });
 
     it("deletes a team's contacts with the team, and on reset", async () => {
@@ -345,6 +355,7 @@ describe.skipIf(!enabled)('MySqlDb', () => {
 
       await db.addTeamContact('LEGAL', 'email', 'legal@example.com');
       await db.reset();
+      await db.createTeam('LEGAL');
       expect((await db.getTeam('LEGAL')).contacts).toEqual([]);
     });
   });
@@ -375,14 +386,14 @@ describe.skipIf(!enabled)('MySqlDb', () => {
   });
 
   describe('reset', () => {
-    it('wipes everything and restores the default teams', async () => {
+    it('wipes everything, teams included', async () => {
       await newIncident();
       await db.addDependency('Acme');
       await db.createTeam('EXTRA');
       await db.reset();
       expect(await db.listIncidents()).toEqual([]);
       expect(await db.listDependencies()).toEqual([]);
-      expect((await db.listTeams()).map((t) => t.name).sort()).toEqual(['CYBER1', 'CYBER2', 'LEGAL']);
+      expect(await db.listTeams()).toEqual([]);
       expect(await db.verifyAuditChain()).toEqual({ ok: true });
     });
   });

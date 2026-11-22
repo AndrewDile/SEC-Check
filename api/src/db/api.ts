@@ -160,7 +160,7 @@ export interface Database {
   getAuditLog(incidentId: string): Promise<AuditEntry[]>;
   verifyAuditChain(): Promise<{ ok: boolean; brokenAtSeq?: number }>;
 
-  // /reset: wipes the current scope and restores its default teams and users
+  // /reset: wipes the current scope and restores its default users
   reset(): Promise<void>;
 
   // test sessions (testing.ts)

@@ -19,15 +19,8 @@ import {
   type UserFields,
 } from './api.js';
 
-const DEFAULT_TEAMS = ['LEGAL', 'CYBER1', 'CYBER2'];
-// The web app's settings.json users and their teams
-const DEFAULT_USERS: Record<string, string[]> = {
-  alice: ['CYBER1'],
-  bob: ['CYBER2'],
-  carol: ['LEGAL'],
-  dana: ['LEGAL', 'CYBER1'],
-  'core-gateway': ['LEGAL', 'CYBER1', 'CYBER2'],
-};
+// The web app's settings.json users. A new or wiped scope has no teams: they are created with /teams NEW.
+const DEFAULT_USERS = ['alice', 'bob', 'carol', 'dana', 'core-gateway'];
 const GENESIS = '0'.repeat(64);
 // Children before parents, for deletes
 const SCOPED_TABLES = [
@@ -267,17 +260,10 @@ export class MySqlDb implements Database {
     }
   }
 
-  // Default teams, users and memberships, and the audit genesis, for a new or wiped scope
+  // Default users (no teams or memberships) and the audit genesis, for a new or wiped scope
   private async seed(c: Conn, scope: number) {
-    const now = Date.now();
-    await c.query('INSERT INTO teams (scope_id, team_name, created_at) VALUES ?', [
-      DEFAULT_TEAMS.map((t, i) => [scope, t, new Date(now + i)]),
-    ]);
     await c.query('INSERT INTO users (scope_id, username, created_at) VALUES ?', [
-      Object.keys(DEFAULT_USERS).map((u) => [scope, u, new Date(now)]),
-    ]);
-    await c.query('INSERT INTO team_members (scope_id, team_name, username, added_at) VALUES ?', [
-      Object.entries(DEFAULT_USERS).flatMap(([u, teams]) => teams.map((t) => [scope, t, u, new Date(now)])),
+      DEFAULT_USERS.map((u) => [scope, u, new Date()]),
     ]);
     await c.query('INSERT INTO audit_head (scope_id, seq, hash) VALUES (?, 0, ?)', [scope, GENESIS]);
   }

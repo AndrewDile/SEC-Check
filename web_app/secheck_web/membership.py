@@ -1,6 +1,6 @@
 """Which users belong to which teams, as stored in the Core API database.
 
-Teams and their members are both kept by the Core API: /teams NEW, REMOVE, GET (with
+Teams and their members are both kept by the Core API: /teams NEW, DELETE, GET (with
 Members), ADD_USER and REMOVE_USER, and /users LIST/GET (each user's Teams). The Core API's
 /reset (and every new test session) puts back the default memberships.
 

@@ -14,14 +14,13 @@ Bugs, for seeing how the tester reports a faulty system:
   crash-logs      /logs answers 500
   unordered-logs  /logs lists tickets newest first
   setup-fails     /test/setup answers 500
-  claim-steal        any team can claim a ticket another team already holds
   edit-drops-fields  a ticket EDIT resets severity, urgency and teams it didn't send
   log-latest-only    /logs lists only the latest version of each ticket
   ignore-session     one shared state for every session (X-Session-ID ignored); not a bug
   strict-setup       /test/setup rejects a non-empty setup object (like another pod's system); not a bug
   members-not-stored /teams ADD_USER answers "User added" but GET doesn't list the member
-  remove-used-team   /teams REMOVE deletes a team even when tickets refer to it
-  no-teams-users     no /teams or /users path (like a system built before they were added)
+  remove-used-team   /teams DELETE deletes a team even when tickets refer to it
+  no-teams-users     no /teams or /users path, and fixed teams LEGAL, CYBER1, CYBER2 (like an older system)
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ BUGS = (
     "crash-logs",
     "unordered-logs",
     "setup-fails",
-    "claim-steal",
     "edit-drops-fields",
     "log-latest-only",
     "ignore-session",
@@ -53,7 +51,9 @@ BUGS = (
 MATERIALITY = ["MATERIAL", "IMMATERIAL", "UNDECIDED"]
 SEVERITY = ["HIGH", "MEDIUM", "LOW", "UNDECIDED", "RESOLVED"]
 URGENCY = ["URGENT", "NOT_URGENT", "UNDECIDED", "RESOLVED"]
-DEFAULT_TEAMS = ["LEGAL", "CYBER1", "CYBER2"]
+# A new session or a reset has no teams, like the pod's Core API. The no-teams-users bug starts
+# with these instead, like a system that has fixed teams and no /teams path.
+FIXED_TEAMS = ["LEGAL", "CYBER1", "CYBER2"]
 DEFAULT_SESSION = "default"
 
 
@@ -86,7 +86,8 @@ class MockSystem:
             raise ValueError("unknown bug %r" % bug)
         self.bug = bug
         self.lock = threading.Lock()
-        self.sessions: Dict[str, SessionState] = {DEFAULT_SESSION: SessionState(DEFAULT_TEAMS)}
+        self.start_teams = list(FIXED_TEAMS) if bug == "no-teams-users" else []
+        self.sessions: Dict[str, SessionState] = {DEFAULT_SESSION: SessionState(self.start_teams)}
 
     # ------------------------------------------------------------------ http entry
     def handle(self, method: str, raw_path: str, headers, body: bytes) -> Tuple[int, Any]:
@@ -125,7 +126,7 @@ class MockSystem:
                 sid = headers.get("X-Session-ID") or payload.get("session_id") or DEFAULT_SESSION
                 if self.bug == "ignore-session":
                     sid = DEFAULT_SESSION
-                state = self.sessions.setdefault(sid, SessionState(DEFAULT_TEAMS))
+                state = self.sessions.setdefault(sid, SessionState(self.start_teams))
                 return 200, route(state, payload)
         except CoreError as exc:
             return 400, {"Error": exc.error, "Message": exc.message}
@@ -154,7 +155,7 @@ class MockSystem:
         if sid in self.sessions and self.bug != "ignore-session":
             return 409, {"message": "Session %s already exists." % sid, "source": "system"}
         setup = payload.get("setup") if isinstance(payload.get("setup"), dict) else {}
-        teams = setup.get("teams") if isinstance(setup.get("teams"), list) else DEFAULT_TEAMS
+        teams = setup.get("teams") if isinstance(setup.get("teams"), list) else self.start_teams
         if self.bug != "ignore-session":
             self.sessions[sid] = SessionState(teams)
         return 201, {"session_id": sid}
@@ -256,7 +257,7 @@ class MockSystem:
 
     def incidents(self, state: SessionState, b: Dict[str, Any]) -> Dict[str, Any]:
         iid = b.get("Incident_ID")
-        if not isinstance(iid, str) or not iid or "_" in iid:
+        if not isinstance(iid, str) or not iid or len(iid) > 64:  # "_" allowed, like the Core API
             invalid("Incident_ID is invalid.")
         ts = self.timestamp(b.get("Timestamp"))
         method = b.get("Method")
@@ -385,11 +386,7 @@ class MockSystem:
         if method == "CLAIM":
             if len(teams) != 1:
                 invalid("CLAIM takes exactly one team.")
-            if (
-                ticket["claimed_by"]
-                and ticket["claimed_by"] != teams[0]
-                and self.bug != "claim-steal"
-            ):
+            if ticket["claimed_by"] and ticket["claimed_by"] != teams[0]:
                 invalid("Ticket is already claimed by %s." % ticket["claimed_by"])
             ticket["claimed_by"] = teams[0]
             status = "Claimed ticket"
@@ -438,10 +435,9 @@ class MockSystem:
             state.dependencies.append(name)
             return {"dp_name": name, "status": self.status("Added")}
         if method == "MATCH":
-            return {
-                "dp_name": name,
-                "status": self.status("Exists" if name in state.dependencies else "Does not Exist"),
-            }
+            if name not in state.dependencies:
+                raise CoreError("DP_DNE", "The dependency name does not exist in the system.")
+            return {"dp_name": name, "status": self.status("Exists")}
         if method == "REMOVE":
             if name not in state.dependencies:
                 raise CoreError("DP_DNE", "The dependency name does not exist in the system.")
@@ -473,11 +469,11 @@ class MockSystem:
                 raise CoreError("TEAM_EXISTS", "The team name already exists in the system.")
             state.teams.append(team)
             return {"Team_Name": team, "Status": self.status("Created")}
-        if method not in ("REMOVE", "GET", "ADD_USER", "REMOVE_USER"):
-            invalid("Method must be one of NEW, REMOVE, ADD_USER, REMOVE_USER, GET, LIST.")
+        if method not in ("DELETE", "GET", "ADD_USER", "REMOVE_USER"):
+            invalid("Method must be one of NEW, DELETE, ADD_USER, REMOVE_USER, GET, LIST.")
         if team not in state.teams:
             raise CoreError("TEAM_DNE", "The team name does not exist in the system.")
-        if method == "REMOVE":
+        if method == "DELETE":
             if self.team_in_use(state, team) and self.bug != "remove-used-team":
                 invalid("Team %s is used by existing tickets and can't be removed." % team)
             state.teams.remove(team)

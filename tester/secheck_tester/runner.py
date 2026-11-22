@@ -12,6 +12,16 @@ from .suite import SUITE, Context, TestCase
 from .target import Target
 
 
+def create_teams(ctx: Context) -> None:
+    """Create the teams the tests use (/teams NEW), since a system may start with none.
+
+    Best effort, and not a test: a system that already has them answers TEAM_EXISTS, and one
+    without /teams answers an error; either way the tests then show what's missing.
+    """
+    for team in ctx.teams:
+        ctx.team("NEW", team)
+
+
 def run_suite(
     session_id: str, target_url: str, settings: Settings, suite: Optional[List[TestCase]] = None
 ) -> Tuple[Dict[str, Any], Optional[str]]:
@@ -20,6 +30,7 @@ def run_suite(
     deadline = time.monotonic() + settings.run_budget
     target = Target(target_url, settings, session_id, deadline=deadline)
     ctx = Context(target, settings.teams, settings.id_style)
+    create_teams(ctx)
 
     results: List[Dict[str, Any]] = []
     criteria_hit: Set[str] = set()

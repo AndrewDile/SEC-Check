@@ -46,15 +46,16 @@ state; see [Known limitations](limitations.md).
 to 255 characters). It is `MANUAL` when added through the API. The schema allows `AUTO`, but
 nothing sets it yet.
 
-**Team.** `LEGAL`, `CYBER1` and `CYBER2` are created by the migration and restored by every
-reset. `/teams` adds and removes teams, their members and their contacts.
+**Team.** Created with `/teams NEW`; a reset or a new test session has none. `/teams` adds and
+removes teams, their members and their contacts. (The first migrations still create `LEGAL`, `CYBER1` and
+`CYBER2`, so a brand-new database has them until its first reset.)
 
 **Team contact.** Where a team's notices go: an email address, a Slack webhook or a Teams
 Workflows webhook. Notices go to teams only. A team without contacts is notified in the log.
 
 **User.** Someone who can act through the Core API (the `X-User` header). Their contact channel
 and address are profile information only: users aren't notified. The defaults are the web app's development users (`alice`, `bob`,
-`carol`, `dana`, `core-gateway`) and their teams; every reset restores them.
+`carol`, `dana`, `core-gateway`), in no teams; every reset restores them.
 
 **Scope.** Which copy of the data a row belongs to: `scope_id` 0 is the real data, and each
 cross-team test session gets its own scope (`test_sessions`). Every table except
@@ -88,7 +89,7 @@ erDiagram
 | `ticket_claims` | `claim_id` | Claim history. Append-only |
 | `notifications` | `notification_id` | One row per team per `NOTIFY` |
 | `dependencies` | `(scope_id, dp_name)` | `source` is `MANUAL` or `AUTO` |
-| `teams` | `(scope_id, team_name)` | Seeded with the three default teams |
+| `teams` | `(scope_id, team_name)` | Created through `/teams`; empty after a reset |
 | `users` | `(scope_id, username)` | `contact_channel` (default `log`) and `contact_address` (the contract's `Contact`), kept but not used for notices. `auth_hash` is the scrypt of the client's `Auth_Hash`, never returned |
 | `team_members` | `(scope_id, team_name, username)` | Who is on which team |
 | `team_contacts` | `contact_id` | Where each team's notices go: `channel` (`email`, `slack` or `ms_teams`) and `address`. A team can't have the same channel and address twice |
@@ -143,7 +144,7 @@ writers queue up. Triggers block `UPDATE` on `audit_log`. They block `DELETE` to
 connection has set `@seccheck_purge`, which only `/reset` and the purge of ended test sessions
 do.
 
-`/logs` returns an incident's audit entries as `Audit_Log`. `MySqlDb.verifyAuditChain()`
+`/logs` returns an incident's audit entries as `Audit_Entries`. `MySqlDb.verifyAuditChain()`
 re-hashes a scope's chain and reports the first broken `seq`; no endpoint calls it yet.
 
 ## Payloads between services

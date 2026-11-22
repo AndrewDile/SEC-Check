@@ -42,6 +42,8 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 
 ## Ingestion and notifications
 
+- **With no teams, nobody is notified.** A reset leaves no teams, so a notice sent before any are
+  created has no recipients and isn't sent again later.
 - **Email needs an SMTP account.** Until `SMTP_HOST` and `SMTP_FROM` are set, email notices are
   reported as `failed`. A team without contacts still only gets a line in the notifier's log.
 - **Teams' webhook hosts are assumed.** The Core API and notifier accept Workflows webhooks on
@@ -119,11 +121,11 @@ testers behave:
 - **Per-person tasks (AC-04).** The plan's independent evaluation assigns a task with a deadline
   to a person. We route work to teams (notify and claim) and keep one filing deadline per
   incident.
-- **Extensions to agree on:** `Filing_Deadline` on incidents, `Note` on `EDIT`, `Audit_Log` on
+- **Extensions to agree on:** `Filing_Deadline` on incidents, `Note` on `EDIT`, `Audit_Entries` on
   `/logs`, `Members` on `/teams GET`, and `GET`, `LIST`, `Contact_Channel` and `Display_Name` on
   `/users`.
 - **Gaps in contract v1.0.2:**
-    - Its Types list `DELETE` for `/teams` and `/users`, but its OpenAPI says `REMOVE`. We take both.
+    - Its Types list `DELETE` for `/teams` and `/users`, but its OpenAPI says `REMOVE`. `/teams` takes `DELETE`; `/users` takes both.
     - It doesn't name the errors for adding an existing member or removing a non-member. We use
       `USER_EXISTS` and `USER_DNE`.
     - `Contact` is one string with no channel, so we added `Contact_Channel`.

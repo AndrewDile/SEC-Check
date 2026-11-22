@@ -4,14 +4,14 @@
 
 | Suite | Where | Count | Needs |
 |---|---|---|---|
-| Tester self-tests | `tester/tests/` | 35 | Nothing. Runs against the tester's own mock system |
+| Tester self-tests | `tester/tests/` | 34 | Nothing. Runs against the tester's own mock system |
 | Core API calendar tests | `api/test/calendar.test.ts` | 2 | Nothing |
 | Core API database tests | `api/test/db.test.ts` | 31 | A MySQL it can wipe. Skips unless `DB_USER` is set |
 | Core API HTTP tests | `api/test/api.test.ts` | 49 | A running Core API, wiped through `/reset`. Skips unless `API_URL` is set. The `/ingest` tests also need `INGEST_CORE_API_TOKEN` |
 | Worker unit tests | `ingestion_worker/tests/test_matching.py`, `test_worker.py` | 26 | Nothing. The Core API and feeds are faked |
 | Notifier unit tests | `notification_service/tests/` | 21 | Nothing. The Core API, SMTP and the Slack and Teams webhooks are faked |
 | Worker end-to-end tests | `ingestion_worker/tests/test_e2e.py` | 5 | The whole stack with the worker and notifier, reading `mock_feeds.py` (`docker-compose.e2e.yml`). Skips unless `E2E_SYSTEM_URL` is set |
-| Cross-team suite | `tester/secheck_tester/suite.py` | 70 | The whole stack. Run through the tester against `/system` |
+| Cross-team suite | `tester/secheck_tester/suite.py` | 61 | The whole stack. Run through the tester against `/system` |
 
 **Not covered by any test in this repo:**
 
@@ -46,7 +46,7 @@ The steps:
 2. Runs the tester self-tests, the worker and notifier unit tests, then `npm test` in `api/` against
    `http://localhost:18080/system` and the database on `127.0.0.1:13306`.
 3. Runs `tester/run_tests.py http://caddy/system --tester http://localhost:18080/tester`, which
-   exits nonzero unless all 70 tests pass.
+   exits nonzero unless all 61 tests pass.
 4. Starts the worker, notifier and mock feeds, and runs `test_e2e.py` against them. It runs last
    because those containers would report incidents during the other suites.
 

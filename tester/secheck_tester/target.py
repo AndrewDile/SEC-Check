@@ -71,7 +71,6 @@ class Target:
         self.paths = {
             "incidents": "/incidents",
             "tickets": "/tickets",
-            "notifier": "/notifier",
             "logs": "/logs",
             "dependencies": settings.dependencies_path,
             "teams": "/teams",
