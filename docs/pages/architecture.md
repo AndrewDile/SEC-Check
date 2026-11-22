@@ -4,9 +4,11 @@
 
 ```mermaid
 flowchart LR
-    browser([Browser]) --> caddy
-    other([Other teams' testers]) --> caddy
+    browser([Browser]) --> cloudflare([Cloudflare])
+    other([Other teams' testers]) --> cloudflare
+    cloudflare --> tunnel
     subgraph host [EC2 host: docker compose]
+        tunnel[tunnel :2000] --> caddy
         caddy[Caddy :80]
         caddy -- "/" --> web[web_app :8000]
         caddy -- "/system/*" --> api[api :3001]
@@ -29,8 +31,11 @@ Core API, and it calls back the services that need to hear about changes.
 
 ## Routing (`Caddyfile`)
 
-Caddy listens on port 80 with plain HTTP and is the only container that publishes a port. The
+Caddy listens on port 80 with plain HTTP and is the only container that publishes a web port. The
 database's `127.0.0.1:3306` is for local tools only.
+
+On the server, the public address is `https://sec-check.andrew-dile.net`, through a Cloudflare
+Tunnel to `caddy:80` (see [Operations](operations.md#public-address)).
 
 | Path | Container | Prefix stripped? | Why |
 |---|---|---|---|
@@ -56,6 +61,7 @@ Containers can reach only the containers they share a Docker network with, and
 | `tester` | `caddy`, `tester` |
 | `logs` | `caddy`, `logs` |
 | `docs` | `caddy`, `docs` |
+| `tunnel` | `caddy`, `tunnel` |
 | `data` | `api`, `db` |
 | `ingest` | `api`, `ingestion-worker` |
 | `notify` | `api`, `notification-service` |
