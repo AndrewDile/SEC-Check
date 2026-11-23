@@ -65,9 +65,29 @@ function oneOf<T extends string>(value: unknown, allowed: T[], field: string): T
   return value as T;
 }
 
+// RFC 3339 date-time with its required offset: Z or +hh:mm / -hh:mm (RFC 3339 also allows a lowercase t and z).
+// Parsed by hand: new Date() would read a time without an offset as the server's local time, and roll impossible
+// dates like Feb 30 over into the next month.
+const DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/;
+
 function timestamp(value: unknown): Date {
-  const date = new Date(typeof value === 'string' ? value : NaN);
-  if (Number.isNaN(date.getTime())) invalid('Timestamp must be an RFC 3339 date-time.');
+  const m = typeof value === 'string' ? DATE_TIME.exec(value) : null;
+  if (!m) invalid('Timestamp must be RFC 3339 with an offset, e.g. 2026-09-25T20:00:00Z or 2026-09-25T16:00:00-04:00.');
+  const [y, mo, d, h, mi, s] = m.slice(1, 7).map(Number);
+  const [offsetH, offsetM] = [Number(m[9] ?? 0), Number(m[10] ?? 0)];
+  const local = new Date(0);
+  local.setUTCFullYear(y, mo - 1, d);
+  local.setUTCHours(h, mi, s, Math.floor(Number(`0${m[7] ?? ''}`) * 1000));
+  const real =
+    local.getUTCFullYear() === y &&
+    local.getUTCMonth() === mo - 1 &&
+    local.getUTCDate() === d &&
+    local.getUTCHours() === h &&
+    local.getUTCMinutes() === mi &&
+    local.getUTCSeconds() === s;
+  if (!real || offsetH > 23 || offsetM > 59) invalid('Timestamp is not a real date and time.');
+  const sign = m[8] === '-' ? -1 : 1;
+  const date = new Date(local.getTime() - sign * (offsetH * 60 + offsetM) * 60_000);
   if (date.getTime() > Date.now() + 5000) invalid('Timestamp cannot be set in the future.');
   return date;
 }
@@ -184,7 +204,12 @@ app.post('/incidents', async (req, res) => {
     severity: oneOf(b.Severity, SEVERITY, 'Severity'),
     urgency: oneOf(b.Urgency, URGENCY, 'Urgency'),
   };
-  const dependency = b.Dependency ?? b.Dependency_Name;
+  // The spec calls it both Dependency and Dependency_Name; either must be a string ('' clears it on EDIT)
+  const dependency = optionalText(
+    b.Dependency ?? b.Dependency_Name,
+    b.Dependency !== undefined ? 'Dependency' : 'Dependency_Name',
+    255,
+  );
   switch (b.Method) {
     case 'NEW': {
       const incident = await db.createIncident({
