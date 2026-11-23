@@ -89,14 +89,14 @@ def run_suite(
         ctx.results[case.test_id] = outcome.outcome
         results.append(outcome.as_dict(case.test_id))
 
-    code = _code_coverage(target, settings)
+    status, body, problem = _target_report(target, settings)
     report = {
         "session_id": session_id,
         "target_url": target_url,
         "results": results,
         "coverage": {
-            "code": code,
-            "component": coverage.component_coverage(),
+            "code": coverage.code_coverage(status, body, problem),
+            "component": coverage.component_coverage(status, body, problem),
             "system": coverage.system_coverage(criteria_hit),
         },
     }
@@ -114,7 +114,8 @@ def _run_one(case: TestCase, ctx: Context) -> Outcome:
     return Outcome("pass", message or "Passed.")
 
 
-def _code_coverage(target: Target, settings: Settings) -> Dict[str, Any]:
+def _target_report(target: Target, settings: Settings) -> Tuple[Optional[int], Any, str]:
+    """The target's /test/report reply (status, body), or a problem explaining why there's none."""
     attempts = max(1, settings.report_retries + 1)
     reply = None
     for attempt in range(attempts):
@@ -123,13 +124,8 @@ def _code_coverage(target: Target, settings: Settings) -> Dict[str, Any]:
             break
         time.sleep(settings.report_retry_delay)
     if reply.status is None:
-        return coverage.code_coverage(
-            None, None, "Target /test/report didn't respond (%s)." % reply.error
-        )
+        return None, None, "Target /test/report didn't respond (%s)." % reply.error
     if reply.status == 409:
-        return coverage.code_coverage(
-            None,
-            None,
-            "Target /test/report still answered 409 after %d retries." % settings.report_retries,
-        )
-    return coverage.code_coverage(reply.status, reply.body)
+        retries = settings.report_retries
+        return None, None, "Target /test/report still answered 409 after %d retries." % retries
+    return reply.status, reply.body, ""

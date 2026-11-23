@@ -172,7 +172,12 @@ class MockSystem:
                     "covered": None,
                     "total": None,
                     "basis": "The mock system does not measure code coverage.",
-                }
+                },
+                "component": {
+                    "covered": None,
+                    "total": None,
+                    "basis": "The mock system is one component: its own in-memory Core API.",
+                },
             },
         }
 

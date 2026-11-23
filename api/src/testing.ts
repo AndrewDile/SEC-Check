@@ -27,6 +27,10 @@ interface Active {
   ending?: Promise<unknown>;
 }
 
+// What a tester session exercises: tester calls reach only the Core API and, through it, the database. The web app,
+// notification service and ingestion worker have their own tests (ui_tests/ and their tests/ folders).
+const COMPONENTS_TESTED = 'Components Tested: Core API, Database. Web app, notifier, and ingest tested separately';
+
 export function testSessions(db: Database) {
   const router = express.Router();
   const active = new Map<string, Active>();
@@ -51,6 +55,7 @@ export function testSessions(db: Database) {
         session_id: id,
         coverage: {
           code: { covered: measured ? lines.covered : null, total: measured ? lines.total : null, basis },
+          component: { covered: null, total: null, basis: COMPONENTS_TESTED },
         },
         metrics: { requests: metrics.endSession(id), ...(reason && { ended: reason }) },
       };

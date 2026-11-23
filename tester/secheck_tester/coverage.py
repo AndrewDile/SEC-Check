@@ -1,7 +1,7 @@
 """Coverage measures for the report.
 
 Coverage counts what was exercised, not what passed:
-  component  null/null; the basis names the components the suite tests
+  component  copied from the target's /test/report (coverage.component)
   system     acceptance criteria AC-01..AC-06; one counts when a test mapped to it got a response
   code       copied from the target's /test/report (coverage.code)
 """
@@ -11,20 +11,15 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, Optional, Set
 
 CRITERIA = ["AC-01", "AC-02", "AC-03", "AC-04", "AC-05", "AC-06"]
-# The suite only calls the Core API (and through it the database); the other services have their
-# own tests (web app: ui_tests/, ingestion worker and notification service: their tests/ folders).
-COMPONENTS_TESTED = (
-    "Components Tested: Core API, Database. Web app, notifier, and ingest tested separately"
-)
 
 
 def measure(covered: Optional[int], total: Optional[int], basis: str) -> Dict[str, Any]:
     return {"covered": covered, "total": total, "basis": basis}
 
 
-def component_coverage() -> Dict[str, Any]:
-    """Not a count: null/null (which the spec allows), with the components tested as the basis."""
-    return measure(None, None, COMPONENTS_TESTED)
+def component_coverage(status: Optional[int], body: Any, problem: str = "") -> Dict[str, Any]:
+    """Read coverage.component from the target's /test/report reply, as for code coverage."""
+    return _reported("component", status, body, problem)
 
 
 def system_coverage(responded_criteria: Iterable[str]) -> Dict[str, Any]:
@@ -41,26 +36,32 @@ def system_coverage(responded_criteria: Iterable[str]) -> Dict[str, Any]:
 
 def code_coverage(status: Optional[int], body: Any, problem: str = "") -> Dict[str, Any]:
     """Read coverage.code from the target's /test/report reply; null/null with the reason otherwise."""
+    return _reported("code", status, body, problem)
+
+
+def _reported(kind: str, status: Optional[int], body: Any, problem: str) -> Dict[str, Any]:
     if problem:
         return measure(None, None, problem)
     if status != 200:
-        return measure(None, None, "Target /test/report answered %s; no code coverage." % status)
-    code = (
-        body.get("coverage", {}).get("code")
+        return measure(
+            None, None, "Target /test/report answered %s; no %s coverage." % (status, kind)
+        )
+    found = (
+        body.get("coverage", {}).get(kind)
         if isinstance(body, dict) and isinstance(body.get("coverage"), dict)
         else None
     )
-    if not isinstance(code, dict):
-        return measure(None, None, "Target /test/report has no coverage.code object.")
-    covered, total, basis = code.get("covered"), code.get("total"), code.get("basis")
+    if not isinstance(found, dict):
+        return measure(None, None, "Target /test/report has no coverage.%s object." % kind)
+    covered, total, basis = found.get("covered"), found.get("total"), found.get("basis")
     target_basis = basis.strip() if isinstance(basis, str) and basis.strip() else ""
     if covered is None and total is None:
-        return measure(None, None, target_basis or "Target reported no code coverage (null).")
+        return measure(None, None, target_basis or "Target reported no %s coverage (null)." % kind)
     if not (_count(covered) and _count(total)) or covered > total:
         return measure(
             None,
             None,
-            "Target coverage.code is malformed (covered=%r, total=%r)." % (covered, total),
+            "Target coverage.%s is malformed (covered=%r, total=%r)." % (kind, covered, total),
         )
     return measure(covered, total, target_basis or "Reported by the target system.")
 
