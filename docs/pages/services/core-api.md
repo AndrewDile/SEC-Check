@@ -229,6 +229,9 @@ own copy of the data (a scope), so sessions run in parallel and never touch the 
       (`dist/`) that ran between setup and report, from V8's precise coverage. V8 can't tell
       requests apart, so sessions running at the same time count each other's lines; `basis` names
       them. It's `null` when the API isn't running its compiled build or `CODE_COVERAGE=off`.
+    - `coverage.component`: `null`/`null` (not a count), with `basis` "Components Tested: Core
+      API, Database. Web app, notifier, and ingest tested separately". A tester session only
+      reaches the Core API and the database; the other services have their own tests.
     - `metrics.requests`: per operation (path and `Method`), `count`, `errors` (status 400 or
       more), and `p50_ms`, `p95_ms` and `max_ms`.
 

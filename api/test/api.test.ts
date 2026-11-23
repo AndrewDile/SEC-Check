@@ -711,7 +711,14 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expect(r.status).toBe(200);
       expect(r.body).toMatchObject({
         session_id: id,
-        coverage: { code: { basis: expect.any(String) } },
+        coverage: {
+          code: { basis: expect.any(String) },
+          component: {
+            covered: null,
+            total: null,
+            basis: 'Components Tested: Core API, Database. Web app, notifier, and ingest tested separately',
+          },
+        },
         metrics: {
           requests: expect.arrayContaining([
             expect.objectContaining({ operation: '/incidents NEW', count: 1, errors: 0 }),

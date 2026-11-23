@@ -16,7 +16,7 @@ secheck_tester/   the tester service
   suite.py        the 66 ordered tests (T-01..T-75, with gaps)
   judge.py        response -> pass / fail / error(source) / skip
   runner.py       runs the suite, abort handling, reads code coverage
-  coverage.py     acceptance-criteria coverage; component coverage names the components tested
+  coverage.py     acceptance-criteria coverage; reads code and component coverage from the target
   sessions.py     session store (reports kept until the process stops)
   config.py       environment settings for unsettled pod decisions
 dev/mock_system.py  in-memory reference system for local runs (not deployed)
@@ -120,9 +120,9 @@ don't depend on or interfere with each other.
 ## Coverage
 
 * **code**: copied from the target's `/test/report`.
-* **component**: not a count. Reported as `null`/`null` (the spec allows null when a
-  measure isn't available) with basis "Components Tested: Core API, Database. Web app,
-  notifier, and ingest tested separately", which `run_tests.py` prints in place of `null`.
+* **component**: copied from the target's `/test/report` (`coverage.component`), like code
+  coverage; `null`/`null` with the reason if the target doesn't report it. Our Core API reports
+  `null`/`null` with basis "Components Tested: Core API, Database. Web app, notifier, and ingest tested separately", which `run_tests.py` prints in place of `null`.
 * **system**: AC-01..AC-06. A criterion counts when a test mapped to it got
   a response. A full run reports **6/6**. AC-06 is covered only as far as
   the Core `/logs` path goes; the 8-K view itself belongs to the Web App.
