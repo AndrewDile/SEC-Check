@@ -666,7 +666,8 @@ describe.skipIf(!API)('Core API pod contract', () => {
     });
   });
 
-  describe('/test/setup and /test/report (cross-team tester)', () => {
+  // setup and report each wait up to 2 s on the services these tests don't start (coverage.ts TIMEOUT_MS)
+  describe('/test/setup and /test/report (cross-team tester)', { timeout: 20_000 }, () => {
     const run = (n: string) => `run-${Date.now()}-${n}`;
     const as = (id: string) => ({ 'x-session-id': id });
     const setup = (id: string) => post('/test/setup', { session_id: id, setup: {} });
@@ -722,6 +723,8 @@ describe.skipIf(!API)('Core API pod contract', () => {
       const { covered, total } = r.body.coverage.code;
       expect(covered).toBeGreaterThan(0);
       expect(total).toBeGreaterThanOrEqual(covered);
+      expect(r.body.coverage.component.covered).toBeGreaterThan(0);
+      expect(r.body.coverage.component.basis).toMatch(/^Services with at least one line run: Core API/);
 
       expect(await report(id)).toEqual(r); // stored
       expectError(await getIncident(ID, as(id)), 'INVALID_DATA'); // ended

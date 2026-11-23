@@ -40,7 +40,53 @@ paths:
                   notification_id: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /coverage/snapshot:
+    post:
+      operationId: snapshotCoverage
+      summary: Start counting lines for a test session
+      description: The Core API calls this at `/test/setup`.
+      responses:
+        "200":
+          description: The generation to pass to `/coverage` as `since`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [since]
+                properties:
+                  since: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /coverage:
+    get:
+      operationId: getCoverage
+      summary: Lines that ran since a snapshot
+      description: The Core API calls this at `/test/report`, and adds the counts to its own.
+      parameters:
+        - { name: since, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Lines inside the notifier's functions, and how many of them ran.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Coverage" }
+        "400":
+          description: "`since` is missing or not a whole number."
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: The notifier restarted since that snapshot, so the lines are lost.
+
 components:
+  schemas:
+    Coverage:
+      type: object
+      required: [covered, total, enabled, started]
+      properties:
+        covered: { type: integer }
+        total: { type: integer }
+        enabled: { type: boolean, description: "false when `CODE_COVERAGE=off`" }
+        started: { type: number, description: "When the notifier began counting, Unix time in seconds" }
+
   securitySchemes:
     bearerAuth:
       type: http
