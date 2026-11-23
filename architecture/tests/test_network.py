@@ -32,9 +32,9 @@ class NetworkTest(unittest.TestCase):
         self.assertIn("web_app is configured to call db", self.addresses())
 
     def test_wrong_direction_is_caught(self):
-        # They share a network, but only web_app -> api is modelled
-        self.repo.compose["api"]["environment"]["WEB"] = "http://web_app:8000"
-        self.assertIn("api is configured to call web_app", self.addresses())
+        # They share a network, but only api -> db is modelled
+        self.repo.compose["db"].setdefault("environment", {})["API"] = "http://api:3001"
+        self.assertIn("db is configured to call api", self.addresses())
 
     def test_wrong_port_is_caught(self):
         self.repo.compose["web_app"]["environment"]["CORE_API_URL"] = "http://api:3000"
