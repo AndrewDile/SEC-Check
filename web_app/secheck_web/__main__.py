@@ -14,12 +14,14 @@ from pathlib import Path
 if sys.version_info < (3, 9):
     sys.exit("Python 3.9 or newer is required.")
 
+from . import line_coverage
 from .app import WebApp
 from .config import load_settings
 from .web import make_server
 
 
 def main() -> None:
+    line_coverage.start()
     parser = argparse.ArgumentParser(
         prog="python -m secheck_web", description="SEC-Check Web App server"
     )
@@ -43,6 +45,10 @@ def main() -> None:
         settings.log_requests = False
     app = WebApp(settings)
     server = make_server(app, settings.host, settings.port, name="webapp")
+    # Answers the Core API's /coverage; the Docker health check isn't a test, so it doesn't count
+    server.RequestHandlerClass = line_coverage.handler(
+        server.RequestHandlerClass, ignore=("/webapp/v1/health",)
+    )
 
     shown = "localhost" if settings.host in ("127.0.0.1", "0.0.0.0") else settings.host
     print("SEC-Check Web App", flush=True)
