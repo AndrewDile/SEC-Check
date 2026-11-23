@@ -2,7 +2,8 @@
 
 T-01..T-40 are the original tester suite. T-41..T-54 are ported from the Web
 App team's mock-Core test suite ("Web Dev/tests"): the checks from it that a
-client can observe through the Core API alone. /notifier is not in the shared
+client can observe through the Core API alone. T-71..T-75 cover more of the spec's methods
+and inputs (/users EDIT, ticket EDIT fields, malformed bodies). /notifier is not in the shared
 spec, so its tests (T-27..T-32, T-41, T-42, T-44) were removed; the other IDs
 are unchanged so reports stay comparable. T-55..T-70 cover the /teams and
 /users paths (creating teams and users, memberships, and using new teams on tickets).
@@ -78,7 +79,12 @@ class Context:
 
     # -- helpers used by tests
     def call(self, name: str, body: Dict[str, Any]) -> Reply:
-        reply = self.target.core(name, body)
+        return self._answered(name, self.target.core(name, body))
+
+    def call_raw(self, name: str, raw: bytes) -> Reply:
+        return self._answered(name, self.target.core_raw(name, raw))
+
+    def _answered(self, name: str, reply: Reply) -> Reply:
         if reply.answered:
             self.responded = True
             self.answered_paths.add(name)
@@ -888,6 +894,93 @@ def t70(ctx: Context):
     expect_error(ctx.user("REMOVE", user), "USER_DNE")
     expect_error(ctx.team("ADD_USER", ctx.teams[0], Username=user), "USER_DNE")
     return "Removed %s; removing again or adding them to a team is USER_DNE." % user
+
+
+# ====================================================================== more of the spec's methods and inputs
+@test("T-71", "Edit a user (/users EDIT)", ("AC-04",))
+def t71(ctx: Context):
+    name = ctx.username("edit")
+    expect_ok(ctx.user("NEW", name, Auth_Hash=AUTH_HASH), "Created")
+    body = expect_ok(
+        ctx.user("EDIT", name, Contact="tester@example.com", Auth_Hash=AUTH_HASH + "-2"), "Edited"
+    )
+    expect_field(body, "Username", name)
+    expect_field(body, "Contact", "tester@example.com", required=False)
+    if "Auth_Hash" in body:
+        raise Fail("/users EDIT returned the Auth_Hash; it should never be sent back.")
+    expect_ok(ctx.user("REMOVE", name), "Removed")
+    return "Edited %s's contact and credential." % name
+
+
+@test("T-72", "Reject EDIT of an unknown user", ("AC-04",))
+def t72(ctx: Context):
+    expect_error(
+        ctx.user("EDIT", ctx.username("never-created"), Contact="tester@example.com"), "USER_DNE"
+    )
+    return "EDIT of an unknown user rejected with USER_DNE."
+
+
+@test(
+    "T-73",
+    "A ticket EDIT can change severity, urgency and teams",
+    ("AC-02", "AC-03"),
+    after=("T-01",),
+    db=True,
+)
+def t73(ctx: Context):
+    a = ctx.iid("A")
+    created = ctx.ticket("NEW", a, "Tester: ticket to re-prioritize", Team_list=ctx.teams[:1])
+    number = new_ticket_number(ctx, expect_ok(created, "Logged"), a)
+    edit = ctx.ticket(
+        "EDIT",
+        a,
+        "Tester: re-prioritized",
+        Ticket_number=number,
+        Ticket_severity="HIGH",
+        Ticket_urgency="URGENT",
+        Team_list=ctx.teams[1:],
+    )
+    expect_ok(edit)  # no EDIT Status in the spec (G-4)
+    body = expect_ok(ctx.get_ticket(a, number), "Displayed")
+    expect_field(body, "Ticket_Description", "Tester: re-prioritized")
+    expect_field(body, "ticket_severity", "HIGH")
+    expect_field(body, "ticket_urgency", "URGENT")
+    teams = field(body, "Team_List")
+    if not isinstance(teams, list) or sorted(teams) != sorted(ctx.teams[1:]):
+        raise Fail("Team_List is %r after the EDIT; expected %r." % (teams, ctx.teams[1:]))
+    return "Ticket %s now HIGH / URGENT for %s." % (number, ", ".join(ctx.teams[1:]))
+
+
+@test("T-74", "Reject a request body that isn't valid JSON", ("AC-01", "AC-05"))
+def t74(ctx: Context):
+    expect_error(ctx.call_raw("incidents", b'{"Method": "NEW", "Incident_ID": '), "INVALID_DATA")
+    expect_error(ctx.call_raw("dependencies", b"method=NEW&dp_name=x"), "INVALID_DATA")
+    return "Malformed JSON rejected with INVALID_DATA."
+
+
+@test(
+    "T-75",
+    "Reject fields of the wrong type",
+    ("AC-01", "AC-02", "AC-05"),
+    after=("T-01",),
+)
+def t75(ctx: Context):
+    a = ctx.iid("A")
+    checks = [
+        ("incidents Description", ctx.incident("NEW", ctx.iid("types"), 42)),
+        ("incidents Severity", ctx.incident("NEW", ctx.iid("types"), "Tester: types", Severity=3)),
+        ("incidents Dependency", ctx.incident("EDIT", a, MATERIAL_DESC, Dependency=42)),
+        ("tickets Team_list", ctx.ticket("NEW", a, "Tester: types", Team_list=ctx.teams[0])),
+        ("dependencies dp_name", ctx.dependency("NEW", 42)),
+    ]
+    for label, reply in checks:
+        try:
+            expect_error(reply, "INVALID_DATA")
+        except Fail as exc:
+            raise Fail("%s: %s" % (label, exc))
+    return "A number or string where the spec wants another type is rejected (%d fields)." % len(
+        checks
+    )
 
 
 ALL_IDS = [t.test_id for t in SUITE]

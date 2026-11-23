@@ -267,6 +267,8 @@ class MockSystem:
             "Urgency": self.one_of(b, "Urgency", URGENCY),
         }
         dependency = b.get("Dependency", b.get("Dependency_Name"))
+        if dependency is not None and (not isinstance(dependency, str) or len(dependency) > 255):
+            invalid("Dependency must be a string of at most 255 characters.")
         if method == "NEW":
             desc = self.description(b.get("Description"))
             if iid in state.incidents:

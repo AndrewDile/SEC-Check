@@ -108,6 +108,12 @@ class Target:
             "POST", self.paths[name], body, self.settings.request_timeout, use_deadline=True
         )
 
+    def core_raw(self, name: str, raw: bytes) -> Reply:
+        """POST a body exactly as given (e.g. malformed JSON), as application/json."""
+        return self._send(
+            "POST", self.paths[name], raw, self.settings.request_timeout, use_deadline=True
+        )
+
     # ------------------------------------------------------------------ transport
     def remaining(self) -> Optional[float]:
         return None if self.deadline is None else self.deadline - time.monotonic()
@@ -123,7 +129,7 @@ class Target:
         headers = {"Accept": "application/json"}
         data = None
         if body is not None:
-            data = json.dumps(body).encode("utf-8")
+            data = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
         if self.settings.session_header:
             headers[self.settings.session_header] = self.session_id
