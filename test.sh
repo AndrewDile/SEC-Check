@@ -53,8 +53,9 @@ uv run python -m unittest discover -s notification_service/tests -t .
 (cd api && API_URL=$SYSTEM DB_HOST=127.0.0.1 DB_PORT=$DB_HOST_PORT npm test)
 
 # The worker and notifier would report incidents into the real data the tests above use. The
-# cross-team suite runs in its own test session, so they can be up for it.
-$DC up -d --build --wait $E2E_SERVICES
+# cross-team suite runs in its own test session, so they can be up for it. --no-deps, so the api
+# isn't rebuilt and recreated, which would end the ci-total session.
+$DC up -d --build --wait --no-deps $E2E_SERVICES
 # The tester calls the system from inside the compose network, where Caddy is "caddy"
 python3 tester/run_tests.py http://caddy/system --tester "http://localhost:$HTTP_PORT/tester"
 
