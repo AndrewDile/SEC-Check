@@ -106,7 +106,7 @@ class HappyPath(unittest.TestCase, ReportShape):
         self.assertIsNone(report["coverage"]["component"]["covered"])
         self.assertEqual(
             report["coverage"]["component"]["basis"],
-            "Components Tested: Core API, Database. Web app, notifier, and ingest tested separately",
+            "Target /test/report has no coverage.component object.",
         )
         self.assertIsNone(report["coverage"]["code"]["covered"])
         # Stored report is identical and lookups don't change it.
