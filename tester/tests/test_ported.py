@@ -245,6 +245,15 @@ class TesterBehaviour(unittest.TestCase):
             self.assertTrue(m["basis"])
         self.assertIsNone(coverage.code_coverage(404, {})["covered"])
 
+    def test_component_coverage_parsing(self):
+        body = {"coverage": {"component": {"covered": 2, "total": 4, "basis": "services"}}}
+        self.assertEqual(
+            coverage.component_coverage(200, body), {"covered": 2, "total": 4, "basis": "services"}
+        )
+        missing = coverage.component_coverage(200, {"coverage": {"code": {}}})
+        self.assertEqual((missing["covered"], missing["total"]), (None, None))
+        self.assertIn("no coverage.component", missing["basis"])
+
     def test_settings_from_env(self):
         s = Settings.from_env(
             {

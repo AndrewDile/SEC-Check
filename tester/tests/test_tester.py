@@ -104,7 +104,7 @@ class HappyPath(unittest.TestCase, ReportShape):
         self.assertEqual(not_passed, [])
         self.assertEqual(report["coverage"]["system"]["covered"], 6)
         self.assertIsNone(report["coverage"]["component"]["covered"])
-        self.assertEqual(  # copied from the target's /test/report
+        self.assertEqual(
             report["coverage"]["component"]["basis"],
             "The mock system is one component: its own in-memory Core API.",
         )

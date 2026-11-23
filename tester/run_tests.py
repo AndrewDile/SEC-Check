@@ -10,6 +10,7 @@ The script only calls the tester's POST /test/setup, POST /test/run and
 GET /test/report; it needs nothing but Python 3.9+.
 
 Exit code: 0 all passed, 1 some test didn't pass, 2 setup or the run failed.
+In GitHub Actions it also adds the results and coverage to the job summary.
 """
 
 from __future__ import annotations
@@ -97,6 +98,24 @@ def print_report(report: Dict[str, Any], failures_only: bool) -> Dict[str, int]:
     return counts
 
 
+def write_summary(report: Dict[str, Any], counts: Dict[str, int], path: str) -> None:
+    """GitHub Actions job summary ($GITHUB_STEP_SUMMARY): results and coverage."""
+    lines = [
+        "## Cross-team suite",
+        "",
+        ", ".join("%d %s" % (n, k) for k, n in counts.items()),
+        "",
+        "| Coverage | Covered | Basis |",
+        "|---|---|---|",
+    ]
+    for key in ("system", "component", "code"):
+        m = report["coverage"][key]
+        shown = "null" if m["covered"] is None else "%d/%d" % (m["covered"], m["total"])
+        lines.append("| %s | %s | %s |" % (key, shown, m["basis"].replace("|", "\\|")))
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Run the SEC-Check tester suite against a system through a deployed tester."
@@ -127,6 +146,8 @@ def main(argv=None) -> int:
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
     counts = print_report(report, args.failures_only)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        write_summary(report, counts, os.environ["GITHUB_STEP_SUMMARY"])
     if args.json:
         print("Full report saved to %s" % args.json)
     if status != 200:
