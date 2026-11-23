@@ -37,8 +37,11 @@ worker and notifier call are in their `core_api.openapi.yaml` files, shown on th
       gives `INVALID_DATA`. Without it, the request uses the real data.
     - `X-User` names who is acting, for the audit log. It must be a user of that data
       (`INVALID_DATA` otherwise). Without it the actor is `Unknown`. It isn't authenticated.
-- **Timestamps:** `Timestamp` must be RFC 3339 and at most 5 seconds in the future. It is
-  checked on every method except `LIST`.
+- **Timestamps:** `Timestamp` must be an RFC 3339 date-time **with its offset**, `Z` or
+  `±hh:mm` (e.g. `2026-09-25T20:00:00Z` or `2026-09-25T16:00:00-04:00`), a real date and time,
+  and at most 5 seconds in the future. Without an offset, or in any other format, it's
+  `INVALID_DATA`. It is checked on every method except `LIST`. Any offset is accepted; responses
+  always give times in UTC (`...Z`).
 - **Errors:** status 400 and `{"Error": "<type>", "Message": "..."}`. The types are
   `INVALID_DATA`, `UUID_EXISTS`, `UUID_DNE`, `DP_EXISTS`, `DP_DNE`, `TEAM_EXISTS`, `TEAM_DNE`,
   `USER_EXISTS` and `USER_DNE`.
@@ -52,6 +55,7 @@ worker and notifier call are in their `core_api.openapi.yaml` files, shown on th
       (`<Incident_ID>_<n>`, `<Incident_ID>_<n>_<version>`, or just `<n>`). On `/notifier`,
       `Ticket_Number` is split at its last `_`: `A_1_1` is ticket 1 of incident `A_1`.
     - `Description`: at most 5000 characters.
+    - `Dependency` (or `Dependency_Name`): optional; if given, a string of at most 255 characters.
     - Team names on `/tickets` (`Team_list`) and `/notifier` (`Team_Names`) must be teams that
       exist, i.e. were created through `/teams`. A reset leaves none. Others: `INVALID_DATA`.
     - Any field too long for its column: `INVALID_DATA`.

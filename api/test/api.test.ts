@@ -114,10 +114,36 @@ describe.skipIf(!API)('Core API pod contract', () => {
       expectError(await getIncident('000000000001'), 'UUID_DNE');
     });
 
+    it('takes a Timestamp in any offset, and returns it in UTC', async () => {
+      const r = await newIncident(undefined, { Timestamp: '2026-09-25T16:00:00-04:00' });
+      expect(r.body.Timestamp).toBe('2026-09-25T20:00:00.000Z');
+      expect((await getIncident()).status).toBe(200);
+    });
+
+    it('rejects a Timestamp without an offset, or that is not a real date and time', async () => {
+      for (const Timestamp of [
+        '2026-09-25T20:00:00', // no offset: would have been read as the server's local time
+        '2026-09-25',
+        'Sep 25 2026 20:00 GMT',
+        '2026-02-30T00:00:00Z',
+        '2026-09-25T24:00:00Z',
+        1758830400000,
+      ])
+        expectError(await newIncident(undefined, { Timestamp }), 'INVALID_DATA');
+      await newIncident();
+      expectError(await post('/logs', { Incident_ID: ID, Timestamp: '2026-09-25T20:00:00' }), 'INVALID_DATA');
+    });
+
     it('rejects invalid data', async () => {
       expectError(await newIncident(undefined, { Timestamp: '2999-01-01T00:00:00Z' }), 'INVALID_DATA');
       expectError(await newIncident(undefined, { Severity: 'EXTREME' }), 'INVALID_DATA');
       expectError(await newIncident(undefined, { Description: 'x'.repeat(5001) }), 'INVALID_DATA');
+      expectError(await newIncident(undefined, { Dependency: 42 }), 'INVALID_DATA');
+      expectError(await newIncident(undefined, { Dependency_Name: ['acme'] }), 'INVALID_DATA');
+      expectError(await newIncident(undefined, { Dependency: 'x'.repeat(256) }), 'INVALID_DATA');
+      await newIncident();
+      expectError(await editIncident({ Dependency: 42 }), 'INVALID_DATA');
+      expect((await getIncident()).body.Dependency).toBeUndefined(); // the rejected edit changed nothing
       expectError(
         await post('/incidents', { Incident_ID: '1', Method: 'DELETE', Timestamp: TS, Description: '' }),
         'INVALID_DATA',
