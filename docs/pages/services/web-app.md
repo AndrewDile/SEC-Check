@@ -15,7 +15,8 @@ one or more Core API calls.
 | `secheck_web/app.py` | Builds the routes **from the contract**, checks who's signed in, validates requests against the spec, maps errors |
 | `secheck_web/handlers/` | One function per `operationId` (`@operation("...")`), plus a few routes the spec doesn't have (`@extension(...)`) |
 | `secheck_web/core_client.py` | The **only** module that knows Core API paths and field names |
-| `secheck_web/audit.py` | The wording of the intake, edit and decision audit tickets, and the parser that reads decisions back |
+| `secheck_web/audit.py` | The wording of the intake, edit and decision audit tickets |
+| `secheck_web/line_coverage.py` | Line coverage for the Core API's `/test/report`. The worker's and notifier's copies are generated from it |
 | `secheck_web/validation.py` | A JSON Schema subset validator that runs on the contract |
 | `secheck_web/web.py` | A small threaded HTTP server on `http.server` |
 | `contracts/webapp_api.{yaml,json}` | The Web App OpenAPI contract the server runs on. **Generated, so don't edit it** (see below) |
@@ -76,7 +77,11 @@ session cookie is shared.
 | `GET /incidents/{id}/log/entries` | yes | Every ticket version, with its details |
 
 **Outside `/webapp/v1`:** `/` redirects to `/app/`; `/app/*` serves the UI; `/openapi.json`
-returns the contract.
+returns the contract. `POST /coverage/snapshot` and `GET /coverage?since=` give the Core API this
+service's code coverage, with `Authorization: Bearer $INBOUND_TOKEN`. `line_coverage.py` answers
+them in front of the server (`__main__.py`), so they run none of the web app's own lines, and it
+doesn't count the Docker health check's `/webapp/v1/health`. Caddy answers 404 for both paths, so
+only the Core API reaches them.
 
 **Errors:**
 
@@ -124,6 +129,8 @@ The settings are in `config/settings.json`, and environment variables override t
 | `decision_teams` | `SECHECK_DECISION_TEAMS` | `[]`, meaning anyone may decide |
 | `auth_mode` | `SECHECK_AUTH_MODE` | `dev` |
 | `log_requests` | `SECHECK_LOG_REQUESTS` | `true`, which writes one line per request to stderr |
+| | `INBOUND_TOKEN` | The Core API's token for `/coverage`; empty turns `/coverage` off. Compose sets `WEBAPP_INBOUND_TOKEN` |
+| | `CODE_COVERAGE` | on; `off` stops counting lines |
 
 ## Spec gaps
 

@@ -20,7 +20,7 @@ The Core API owns the data and implements the pod's Core API contract (v1.0.2, w
 | `src/calendar.ts` | Business days for the Form 8-K filing deadline |
 | `src/services.ts` | `/ingest/*` and `/notif/*`, and the outbound calls to the worker and notifier |
 | `src/testing.ts` | `/test/setup` and `/test/report` for the cross-team tester, and test session limits |
-| `src/coverage.ts` | Per-session code coverage from V8 |
+| `src/coverage.ts` | Per-session code coverage: its own from V8, plus the Python services' |
 | `src/metrics.ts` | Request log lines and per-session request timings |
 
 There is no OpenAPI file for the pod contract in this repo; the pod keeps it. The endpoints the
@@ -225,13 +225,22 @@ own copy of the data (a scope), so sessions run in parallel and never touch the 
       client IP; past either, 429.
 - **Requests in the session** send `X-Session-ID: <session_id>`.
 - **`GET /test/report?session_id=...`:** ends the session and returns its report:
-    - `coverage.code`: `covered` and `total` lines inside functions of the compiled build
-      (`dist/`) that ran between setup and report, from V8's precise coverage. V8 can't tell
-      requests apart, so sessions running at the same time count each other's lines; `basis` names
-      them. It's `null` when the API isn't running its compiled build or `CODE_COVERAGE=off`.
-    - `coverage.component`: `null`/`null` (not a count), with `basis` "Components Tested: Core
-      API, Database. Web app, notifier, and ingest tested separately". A tester session only
-      reaches the Core API and the database; the other services have their own tests.
+    - `coverage.code`: `covered` and `total` lines inside functions that ran between setup and
+      report, summed over every service measured. The Core API's come from V8's precise coverage
+      of its compiled build (`dist/`). The web app's, worker's and notifier's come from their
+      `line_coverage.py`, through `POST /coverage/snapshot` at setup and `GET /coverage` at
+      report. It counts only lines that requests run: answering `/coverage`, the Docker health
+      checks and the worker's polling add none, but the catch-ups the Core API asks the worker
+      for do. A service that didn't answer at setup counts from when it started, if that was
+      after setup. `basis` gives each service's lines, and names the services not measured and
+      why: the error and the step, e.g. `HTTP 401 at /test/setup`, `ENOTFOUND at /test/report`,
+      or `HTTP 409 at /test/report` when the service restarted during the session (also logged),
+      `CODE_COVERAGE=off`, or the Core API not running its compiled build. It's `null` when no
+      service was measured.
+    - `coverage.component`: of the services measured, how many ran at least one line. `basis`
+      names the ones reached and not reached.
+    - Neither can tell one client's requests from another's, so sessions running at the same
+      time, and real users, count too; `basis` names the overlapping sessions.
     - `metrics.requests`: per operation (path and `Method`), `count`, `errors` (status 400 or
       more), and `p50_ms`, `p95_ms` and `max_ms`.
 
@@ -290,20 +299,23 @@ e.g. `/incidents NEW`.
 | `MIGRATIONS_DIR` | `../db/migrations` from the API (Compose mounts it at `/migrations`) | Migrations applied at startup |
 | `WORKER_URL`, `NOTIFIER_URL` | unset | Where to send dependency events and notifications. Unset means skip |
 | `WEB_APP_URL` | `http://localhost:8000` (Compose sets `http://localhost`) | Base of claim links |
-| `INGEST_*_TOKEN`, `NOTIF_*_TOKEN` | none | See [Architecture](../architecture.md#service-to-service-authentication) |
+| `WEB_APP_INTERNAL_URL` | unset (Compose sets `http://web_app:8000`) | Where to read the web app's code coverage. Unset means skip |
+| `INGEST_*_TOKEN`, `NOTIF_*_TOKEN`, `WEBAPP_INBOUND_TOKEN` | none | See [Architecture](../architecture.md#service-to-service-authentication) |
 | `SESSION_HEADERS` | `x-session-id` | Comma-separated headers a request may name its test session in |
 | `MAX_TEST_SESSIONS` | `10` | Active test sessions at once |
 | `SESSION_IDLE_MINUTES` | `30` | When an idle session ends, and how long after ending its data is deleted |
 | `SETUPS_PER_MINUTE` | `20` | `/test/setup` calls per client IP per minute |
-| `CODE_COVERAGE` | on | `off` stops measuring code coverage |
+| `CODE_COVERAGE` | on | `off` stops measuring the Core API's code coverage (each Python service reads its own) |
 
 ## Tests
 
-`api/test/` holds 64 vitest tests:
+`api/test/` holds 87 vitest tests:
 
 - **`calendar.test.ts`:** 2 unit tests of the filing deadline's business days. They always run.
-- **`db.test.ts`:** 24 tests of `MySqlDb` against a real MySQL. They skip unless `DB_USER` is set.
-- **`api.test.ts`:** 38 HTTP tests against a running API. They skip unless `API_URL` is set.
+- **`form8k.test.ts`, `coverage.test.ts`:** 2 unit tests each, of the Form 8-K export and the
+  coverage report. They always run.
+- **`db.test.ts`:** 31 tests of `MySqlDb` against a real MySQL. They skip unless `DB_USER` is set.
+- **`api.test.ts`:** 50 HTTP tests against a running API. They skip unless `API_URL` is set.
 
 The last two wipe the real data. `./test.sh` sets the variables and runs them all. See
 [Testing](../testing.md).

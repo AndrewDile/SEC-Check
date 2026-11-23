@@ -123,8 +123,11 @@ The cache is an in-memory dictionary, loaded on the first poll and updated by th
 
 ## Interfaces
 
-**Worker API**, which only the Core API calls, with `INGEST_INBOUND_TOKEN`. Both calls are
-idempotent.
+**Worker API**, which only the Core API calls, with `INGEST_INBOUND_TOKEN`. The dependency calls
+are idempotent. The `/coverage` calls give the Core API the worker's code coverage for
+`/test/report`. `line_coverage.py` (generated from the web app's copy) answers them as middleware,
+so they run none of the worker's lines. Its scheduled polls don't count either; the catch-ups the
+Core API asks for (`PUT /dependencies/{id}`) do.
 
 <swagger-ui src="../openapi/ingestion_worker/openapi.yaml"/>
 
@@ -148,3 +151,4 @@ These two services are internal, so **Try it out** won't reach them from a brows
 | `KEV_URL`, `EDGAR_SEARCH_URL` | The real feeds | Only the end-to-end tests change these |
 | `HOST`, `PORT` | `127.0.0.1`, `8002` (the image sets `0.0.0.0`) | Where the event API listens |
 | `LOG_LEVEL` | `INFO` | Python logging level |
+| `CODE_COVERAGE` | on | `off` stops counting lines |

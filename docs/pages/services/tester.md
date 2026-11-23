@@ -15,7 +15,7 @@ point at any team's base URL. `tester/README.md` has the full detail; this page 
 | `secheck_tester/suite.py` | The tests, T-01 … T-75 with gaps (T-55 … T-70 cover `/teams` and `/users`; `/notifier` isn't tested, as it isn't in the shared spec) |
 | `secheck_tester/judge.py` | Turns each response into pass, fail, error (with its source) or skip |
 | `secheck_tester/runner.py` | Runs the suite: time budget, aborting after repeated communication errors, fetching coverage |
-| `secheck_tester/coverage.py` | Acceptance-criteria (system) coverage, AC-01 … AC-06 |
+| `secheck_tester/coverage.py` | Acceptance-criteria (system) coverage, AC-01 … AC-06, and reading the target's code and component coverage |
 | `secheck_tester/sessions.py` | Reports, kept in memory until the process stops |
 | `dev/mock_system.py` | An in-memory reference system for local runs, with `--bug ...` fault modes |
 | `run_tests.py` | A command-line client: setup, run and report, then a readable summary |
@@ -49,8 +49,11 @@ them answers `TEAM_EXISTS`, which is fine).
 **Coverage:**
 
 - **System:** AC-01 … AC-06, counting which criteria got an answered test. A full run is 6/6.
-- **Code:** copied from the target's report. Our Core API reports `null`.
-- **Component:** not measured.
+- **Code:** copied from the target's report (`coverage.code`).
+- **Component:** copied from the target's report (`coverage.component`) when it has one; `null`
+  with the reason otherwise. Ours counts the services that ran at least one line.
+
+In GitHub Actions, `run_tests.py` also adds the results and coverage to the job summary.
 
 ## Interface
 

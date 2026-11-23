@@ -39,6 +39,7 @@ copy at `~/sec-check/.env`.
 | `INGEST_INBOUND_TOKEN` | api, ingestion worker | Bearer token the Core API sends to the worker |
 | `NOTIF_CORE_API_TOKEN` | api, notification service | Bearer token the notifier sends to the Core API |
 | `NOTIF_INBOUND_TOKEN` | api, notification service | Bearer token the Core API sends to the notifier |
+| `WEBAPP_INBOUND_TOKEN` | api, web app | Bearer token the Core API sends to the web app's `/coverage` |
 | `SEC_USER_AGENT` | ingestion worker | Who is calling, e.g. `"Team Name you@example.com"`. The SEC blocks requests without one |
 | `WEB_APP_URL` | api | Public address of the web app, used for claim links in notifications. Default `http://localhost` |
 | `LOGS_USER`, `LOGS_PASSWORD_HASH` | caddy | Login for `/logs/`. Set both or neither (see [Operations](operations.md#log-viewer)) |
