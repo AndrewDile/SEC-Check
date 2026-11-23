@@ -1,11 +1,20 @@
 // Cross-team tester interface (tester-spec): POST /test/setup and GET /test/report.
 // Each session gets its own scope of the database (context.ts), so sessions run in parallel and never touch
 // the real data. Requests join a session with the X-Session-ID header. /test/report ends the session and
-// stores its report (code coverage and request timings); asking again returns the stored report.
+// stores its report (code and component coverage, and request timings); asking again returns the stored report.
 // A session idle for SESSION_IDLE_MINUTES ends by itself, and an ended session's rows are deleted that long
 // after it ends. Errors use the tester's format {message, source}, not the Core {Error, Message}.
 import express from 'express';
-import { linesSince, type Snapshot, snapshot } from './coverage.js';
+import {
+  coverageReport,
+  linesSince,
+  type Marks,
+  type Part,
+  type Snapshot,
+  servicesSince,
+  snapshot,
+  snapshotServices,
+} from './coverage.js';
 import { type Database, DbError } from './db/api.js';
 import * as metrics from './metrics.js';
 
@@ -22,14 +31,11 @@ export function testError(res: express.Response, status: number, message: string
 interface Active {
   scope: number;
   coverage: Snapshot;
+  services: Marks;
   overlapped: Set<string>;
   lastSeen: number;
   ending?: Promise<unknown>;
 }
-
-// What a tester session exercises: tester calls reach only the Core API and, through it, the database. The web app,
-// notification service and ingestion worker have their own tests (ui_tests/ and their tests/ folders).
-const COMPONENTS_TESTED = 'Components Tested: Core API, Database. Web app, notifier, and ingest tested separately';
 
 export function testSessions(db: Database) {
   const router = express.Router();
@@ -39,24 +45,20 @@ export function testSessions(db: Database) {
 
   async function end(id: string, s: Active, reason?: string) {
     s.ending ??= (async () => {
-      const lines = await linesSince(s.coverage).catch((e) => console.error('code coverage failed:', e));
-      const others = [...s.overlapped];
-      const basis = !lines
-        ? 'Code coverage could not be measured for this session.'
+      const [lines, services] = await Promise.all([
+        linesSince(s.coverage).catch((e) => console.error('code coverage failed:', e)),
+        servicesSince(s.services),
+      ]);
+      const core: Part = !lines
+        ? { name: 'Core API', missing: 'failed' }
         : !lines.enabled
-          ? 'Code coverage is turned off (CODE_COVERAGE=off).'
+          ? { name: 'Core API', missing: 'CODE_COVERAGE=off' }
           : !lines.measured
-            ? 'Code coverage is only measured when the Core API runs its compiled build.'
-            : `Lines inside functions of the Core API's compiled build (dist/) that ran between /test/setup and /test/report.${
-                others.length ? ` Sessions running at the same time also count: ${others.join(', ')}.` : ''
-              }`;
-      const measured = lines?.enabled && lines.measured;
+            ? { name: 'Core API', missing: 'only its compiled build is measured' }
+            : { name: 'Core API', covered: lines.covered, total: lines.total };
       const report = {
         session_id: id,
-        coverage: {
-          code: { covered: measured ? lines.covered : null, total: measured ? lines.total : null, basis },
-          component: { covered: null, total: null, basis: COMPONENTS_TESTED },
-        },
+        coverage: coverageReport([core, ...services], [...s.overlapped]),
         metrics: { requests: metrics.endSession(id), ...(reason && { ended: reason }) },
       };
       await db.endSession(s.scope, report);
@@ -96,11 +98,14 @@ export function testSessions(db: Database) {
     starting++;
     try {
       const scope = await db.createSession(sessionId, ip);
+      const [coverage, services] = await Promise.all([snapshot(), snapshotServices()]);
+      // No await from here on, so overlapping sessions see each other both ways
       for (const s of active.values()) s.overlapped.add(sessionId);
       metrics.startSession(sessionId);
       active.set(sessionId, {
         scope,
-        coverage: await snapshot(),
+        coverage,
+        services,
         overlapped: new Set(active.keys()),
         lastSeen: Date.now(),
       });
