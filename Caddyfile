@@ -26,6 +26,12 @@
 	handle_path /docs/* {
 		reverse_proxy docs:80
 	}
+	# Only the Core API calls the web app's /coverage, on the internal network. A handle of its own,
+	# because the catch-all handle below would run before a bare respond.
+	@coverage path /coverage /coverage/snapshot
+	handle @coverage {
+		respond 404
+	}
 	handle {
 		reverse_proxy web_app:8000
 	}
