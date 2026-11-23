@@ -13,15 +13,15 @@ by changing `target_url`.
 secheck_tester/   the tester service
   server.py       POST /test/setup, POST /test/run, GET /test/report
   target.py       the ONLY place that knows the target's URLs and paths
-  suite.py        the 61 ordered tests (T-01..T-70, with gaps)
+  suite.py        the 66 ordered tests (T-01..T-75, with gaps)
   judge.py        response -> pass / fail / error(source) / skip
   runner.py       runs the suite, abort handling, reads code coverage
-  coverage.py     acceptance-criteria coverage (component: not yet measured)
+  coverage.py     acceptance-criteria coverage; component coverage names the components tested
   sessions.py     session store (reports kept until the process stops)
   config.py       environment settings for unsettled pod decisions
 dev/mock_system.py  in-memory reference system for local runs (not deployed)
 tests/              unittest checks of the tester against the mock system
-                      (test_tester.py: interface and fault modes; test_ported.py: T-41..T-70 and edge cases)
+                      (test_tester.py: interface and fault modes; test_ported.py: T-41..T-75 and edge cases)
 openapi/tester.yaml OpenAPI 3.1.1 for the tester's three endpoints
 ```
 
@@ -120,8 +120,9 @@ don't depend on or interfere with each other.
 ## Coverage
 
 * **code**: copied from the target's `/test/report`.
-* **component**: not measured yet; reported as `null`/`null` with basis
-  "not yet measured" (the spec allows null when a measure isn't available).
+* **component**: not a count. Reported as `null`/`null` (the spec allows null when a
+  measure isn't available) with basis "Components Tested: Core API, Database. Web app,
+  notifier, and ingest tested separately", which `run_tests.py` prints in place of `null`.
 * **system**: AC-01..AC-06. A criterion counts when a test mapped to it got
   a response. A full run reports **6/6**. AC-06 is covered only as far as
   the Core `/logs` path goes; the 8-K view itself belongs to the Web App.
@@ -193,6 +194,11 @@ Coverage counts what was exercised, not what passed.
 | T-68 | Remove a user from a team (REMOVE_USER) | AC-04 | T-64 |
 | T-69 | Remove an unused team and its members | AC-04 | T-61, T-01 |
 | T-70 | Remove a user (`/users REMOVE`) | AC-02 | T-61 |
+| T-71 | Edit a user (`/users EDIT`) | AC-04 | - |
+| T-72 | Reject EDIT of an unknown user | AC-04 | - |
+| T-73 | A ticket EDIT can change severity, urgency and teams | AC-02, AC-03 | T-01 |
+| T-74 | Reject a request body that isn't valid JSON | AC-01, AC-05 | - |
+| T-75 | Reject fields of the wrong type | AC-01, AC-02, AC-05 | T-01 |
 
 T-41..T-54 are ported from the Web App team's mock-Core test suite
 (`Web Dev/tests`). Only checks a client can observe through the Core API were
@@ -222,32 +228,34 @@ Each test under the criteria it checks (a test can count for more than one), and
 ```
 AC-01 │ REQ-01
   Tests: T-01, T-02, T-36, T-52                       │ Type: success  │ Automated: yes, the tester creates and reads back incidents through the Core API
-  Tests: T-03, T-04, T-07, T-08, T-09, T-54           │ Type: failure  │ Automated: yes, invalid input must get the expected error
+  Tests: T-03, T-04, T-07, T-08, T-09, T-54,          │ Type: failure  │ Automated: yes, invalid input, malformed JSON and wrong field types get the expected error
+         T-74, T-75
   Tests: T-05, T-06, T-10, T-11                       │ Type: boundary │ Automated: yes, future timestamp, 5000-character limit, omitted fields default to UNDECIDED
 
 AC-02 │ REQ-02
   Tests: T-15, T-16, T-17, T-18, T-23, T-24,          │ Type: success  │ Automated: yes, ticket actions are compared with /logs (versions, order, details)
-         T-48, T-49, T-50, T-66, T-69
+         T-48, T-49, T-50, T-66, T-69, T-73
   Tests: T-19, T-20, T-22, T-43, T-45, T-46,          │ Type: failure  │ Automated: yes, badly formed tickets are rejected and not logged
-         T-47, T-54, T-67
+         T-47, T-54, T-67, T-75
   Tests: T-21, T-26                                   │ Type: boundary │ Automated: yes, future timestamps are rejected; all timestamps are in UTC
 
 AC-03 │ REQ-03
-  Tests: T-12, T-13, T-15, T-52                       │ Type: success  │ Automated: yes, a marking is set, then read back and compared
+  Tests: T-12, T-13, T-15, T-52, T-73                 │ Type: success  │ Automated: yes, a marking or priority is set, then read back and compared
   Test: T-14                                          │ Type: failure  │ Automated: yes, marking an unknown incident is rejected
   Tests: none                                         │ Type: failure  │ Automated: no, "moved to the correct location" has no Core API equivalent beyond team queues
 
 AC-04 │ REQ-04
-  Tests: T-55, T-56, T-61, T-63, T-64, T-66,          │ Type: success  │ Automated: yes, teams and users are configured and teams are assigned to tickets
-         T-68, T-69, T-70
-  Tests: T-43, T-58, T-59, T-60, T-62, T-65, T-67     │ Type: failure  │ Automated: yes, unknown teams on tickets and bad team or user setup are rejected
+  Tests: T-55, T-56, T-61, T-63, T-64, T-66,          │ Type: success  │ Automated: yes, teams and users are configured and edited, and teams are assigned to tickets
+         T-68, T-69, T-70, T-71
+  Tests: T-43, T-58, T-59, T-60, T-62, T-65,          │ Type: failure  │ Automated: yes, unknown teams on tickets and bad team or user setup are rejected
+         T-67, T-72
   Test: T-57                                          │ Type: boundary │ Automated: yes, a team with zero members
   Tests: none                                         │ Type: success  │ Automated: not by the tester, notify and claim use /notifier, which isn't in the shared spec (our API and UI tests cover it)
   Tests: none                                         │ Type: boundary │ Automated: no, the tester doesn't read the audit-log order or test passed deadlines
 
 AC-05 │ REQ-05
   Tests: T-33, T-35, T-36, T-37, T-38                 │ Type: success  │ Automated: yes, a dependency is added, matched, linked to an incident and removed
-  Tests: T-34, T-39, T-40, T-54                       │ Type: failure  │ Automated: yes, duplicates, unknown names and bad methods are rejected
+  Tests: T-34, T-39, T-40, T-54, T-74, T-75           │ Type: failure  │ Automated: yes, duplicates, unknown names, bad methods, malformed JSON and wrong types are rejected
   Test: T-53                                          │ Type: boundary │ Automated: yes, dependency names with spaces
   Tests: none                                         │ Type: boundary │ Automated: no, polling the incident feed needs the ingestion worker, which the tester can't drive
 

@@ -53,7 +53,7 @@ class PortedTests(unittest.TestCase):
     def test_suite_has_the_ported_tests_in_order(self):
         ids = [t.test_id for t in SUITE]
         self.assertEqual(
-            ids, ["T-%02d" % n for n in range(1, 71) if "T-%02d" % n not in NOTIFIER_TESTS]
+            ids, ["T-%02d" % n for n in range(1, 76) if "T-%02d" % n not in NOTIFIER_TESTS]
         )
         for t in SUITE:
             self.assertTrue(set(t.criteria) <= set(coverage.CRITERIA), t.test_id)
@@ -87,7 +87,7 @@ class PortedTests(unittest.TestCase):
         self.assertEqual((r["T-25"]["outcome"], r["T-25"]["source"]), ("error", "system"))
 
 
-TEAMS_AND_USERS = ["T-%02d" % n for n in range(55, 71)]
+TEAMS_AND_USERS = ["T-%02d" % n for n in range(55, 71)] + ["T-71", "T-72"]
 
 
 class TeamsAndUsers(unittest.TestCase):
@@ -270,7 +270,7 @@ class TesterBehaviour(unittest.TestCase):
         )
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("T-70", out.stdout)
-        self.assertIn("61 tests", out.stdout)
+        self.assertIn("66 tests", out.stdout)
 
 
 if __name__ == "__main__":

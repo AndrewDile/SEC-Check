@@ -88,7 +88,9 @@ def print_report(report: Dict[str, Any], failures_only: bool) -> Dict[str, int]:
     )
     for key in ("system", "component", "code"):
         m = report["coverage"][key]
-        if m["covered"] is None:
+        if key == "component":
+            print("Coverage %-11s %s" % (key + ":", m["basis"]))
+        elif m["covered"] is None:
             print("Coverage %-11s null, %s" % (key + ":", m["basis"]))
         else:
             print("Coverage %-11s %d/%d   %s" % (key + ":", m["covered"], m["total"], m["basis"]))
