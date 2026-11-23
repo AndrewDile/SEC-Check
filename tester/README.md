@@ -122,7 +122,7 @@ don't depend on or interfere with each other.
 * **code**: copied from the target's `/test/report`.
 * **component**: copied from the target's `/test/report` (`coverage.component`), like code
   coverage; `null`/`null` with the reason if the target doesn't report it. Our Core API reports
-  `null`/`null` with basis "Components Tested: Core API, Database. Web app, notifier, and ingest tested separately", which `run_tests.py` prints in place of `null`.
+  how many of its services ran at least one line.
 * **system**: AC-01..AC-06. A criterion counts when a test mapped to it got
   a response. A full run reports **6/6**. AC-06 is covered only as far as
   the Core `/logs` path goes; the 8-K view itself belongs to the Web App.

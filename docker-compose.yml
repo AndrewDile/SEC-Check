@@ -56,12 +56,14 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       WORKER_URL: http://ingestion-worker:8002
       NOTIFIER_URL: http://notification-service:8001
+      WEB_APP_INTERNAL_URL: http://web_app:8000   # its /coverage, for /test/report
       WEB_APP_URL: ${WEB_APP_URL:-http://localhost}   # for claim links in notifications
       # Tokens the services send us, and the ones we send them
       INGEST_CORE_API_TOKEN: ${INGEST_CORE_API_TOKEN}
       INGEST_INBOUND_TOKEN: ${INGEST_INBOUND_TOKEN}
       NOTIF_CORE_API_TOKEN: ${NOTIF_CORE_API_TOKEN}
       NOTIF_INBOUND_TOKEN: ${NOTIF_INBOUND_TOKEN}
+      WEBAPP_INBOUND_TOKEN: ${WEBAPP_INBOUND_TOKEN}
       MIGRATIONS_DIR: /migrations   # applied at startup, each once (schema_migrations)
     volumes:
       - ./db/migrations:/migrations:ro
@@ -94,6 +96,7 @@ services:
     build: ./web_app
     environment:
       CORE_API_URL: http://api:3001
+      INBOUND_TOKEN: ${WEBAPP_INBOUND_TOKEN}   # the Core API's, for /coverage
     depends_on:
       - api
     networks: [web]
@@ -119,6 +122,10 @@ services:
       SEC_USER_AGENT: ${SEC_USER_AGENT}
     depends_on:
       - api
+    healthcheck:   # its event API accepts connections; it has no health route
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8002), 2)"]
+      interval: 10s
+      retries: 6
     networks: [ingest]
     restart: unless-stopped
 
@@ -139,6 +146,10 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       - api
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8001/healthz', timeout=2)"]
+      interval: 10s
+      retries: 6
     networks: [notify]
     restart: unless-stopped
 

@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from ingestion_worker import config, core_api, dependency_cache
+from ingestion_worker import config, core_api, dependency_cache, line_coverage
 from ingestion_worker.matching import find_matches
 from ingestion_worker.models import Dependency, IncidentCreate, MatchedDependency
 from ingestion_worker.sources.base import Source, SourceEvent
@@ -50,7 +50,11 @@ def run_pending_catch_ups(sources: list[Source]) -> None:
     with _pending_lock:
         waiting = list(_pending.values())
         _pending.clear()
-    if waiting and not catch_up(sources, waiting):
+    if not waiting:
+        return
+    with line_coverage.counted():  # the Core API asked for it, unlike the polls
+        done = catch_up(sources, waiting)
+    if not done:
         with _pending_lock:
             for dependency in waiting:
                 _pending.setdefault(dependency.id, dependency)

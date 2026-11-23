@@ -8,7 +8,7 @@ from unittest import mock
 import httpx
 from fastapi.testclient import TestClient
 
-from ingestion_worker import app, config, dependency_cache, worker
+from ingestion_worker import app, config, dependency_cache, line_coverage, worker
 from ingestion_worker.models import Dependency
 from ingestion_worker.sources.base import Source, SourceEvent
 from ingestion_worker.sources.cisa_kev import CisaKev
@@ -236,3 +236,57 @@ class EventApi(WorkerTestCase):
         )
         self.assertEqual(response.status_code, 401)
         self.assertEqual(worker._pending, {})
+
+
+class CoverageApi(WorkerTestCase):
+    def setUp(self):
+        super().setUp()
+        line_coverage.start()
+        self.client = TestClient(app.app)
+        self.auth = {"Authorization": f"Bearer {config.INBOUND_TOKEN}"}
+
+    def lines(self, since):
+        response = self.client.get(f"/coverage?since={since}", headers=self.auth)
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def test_counts_the_lines_requests_run_since_a_snapshot(self):
+        since = self.client.post("/coverage/snapshot", headers=self.auth).json()["since"]
+        self.assertEqual(self.lines(since)["covered"], 0)  # measuring adds none
+        self.client.put(f"/dependencies/{WIDGET.id}", json=WIDGET.model_dump(), headers=self.auth)
+        after = self.lines(since)
+        self.assertGreater(after["covered"], 0)
+        self.assertGreater(after["total"], after["covered"])
+        self.assertTrue(after["enabled"])
+
+    def test_quiet_work_does_not_count(self):
+        since = self.client.post("/coverage/snapshot", headers=self.auth).json()["since"]
+        thread = threading.Thread(
+            target=lambda: (line_coverage.quiet(), dependency_cache.get_all())
+        )
+        thread.start()
+        thread.join()
+        self.assertEqual(self.lines(since)["covered"], 0)
+
+    def test_a_catch_up_counts_in_the_quiet_poll_loop(self):
+        since = self.client.post("/coverage/snapshot", headers=self.auth).json()["since"]
+        worker.request_catch_up(WIDGET)
+
+        def poll_loop():
+            line_coverage.quiet()
+            worker.run_pending_catch_ups([FakeSource([event("NEW", 2)])])
+
+        thread = threading.Thread(target=poll_loop)
+        thread.start()
+        thread.join()
+        self.assertGreater(self.lines(since)["covered"], 0)
+
+    def test_a_snapshot_from_before_a_restart_is_refused(self):
+        since = self.client.post("/coverage/snapshot", headers=self.auth).json()["since"]
+        later = self.client.get(f"/coverage?since={since + 1}", headers=self.auth)
+        self.assertEqual(later.status_code, 409)
+
+    def test_rejects_a_wrong_token(self):
+        bad = {"Authorization": "Bearer nope"}
+        self.assertEqual(self.client.post("/coverage/snapshot", headers=bad).status_code, 401)
+        self.assertEqual(self.client.get("/coverage?since=1", headers=bad).status_code, 401)

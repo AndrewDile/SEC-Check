@@ -115,7 +115,7 @@ def _run_one(case: TestCase, ctx: Context) -> Outcome:
 
 
 def _target_report(target: Target, settings: Settings) -> Tuple[Optional[int], Any, str]:
-    """The target's /test/report reply (status, body), or a problem explaining why there's none."""
+    """The target's /test/report reply as (status, body, problem)."""
     attempts = max(1, settings.report_retries + 1)
     reply = None
     for attempt in range(attempts):

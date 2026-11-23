@@ -82,11 +82,21 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 - **Missing tests.** The worker's feed parsers and the notifier's `log` channel and result report have none.
   Slack and Teams are only tested against fakes in unit tests. Email is also tested end to end, against Mailpit
   without encryption. Nothing tests the real services. The web app's tests aren't in this repo.
-- **Code coverage is shared between overlapping sessions.** V8 can't tell which request ran a
-  line, so sessions running at the same time count each other's lines (`basis` names them).
-  Component coverage isn't measured.
+- **Coverage is shared with other traffic.** Neither V8 nor `line_coverage.py` can tell one
+  client's requests from another's, so overlapping sessions and real users count too (`basis`
+  names the sessions).
+- **The Core API's coverage counts its own measuring.** V8 counts the whole process, so the
+  Core API's `/test/setup` and `/test/report` code and its timers (session expiry, retries) count.
+  The Python services leave out their `/coverage` answers, health checks and the worker's polling.
+- **Sessions don't reach the worker.** Test sessions never send it dependencies, and its polling
+  doesn't count, so a cross-team run shows it at or near zero.
+- **The run's total leaves out some tests.** The unit, database and tester self-tests import the
+  code instead of calling the stack, so they don't count, and nothing in CI uses the web app.
+  No request joins its `ci-total` session either, so a run longer than `SESSION_IDLE_MINUTES`
+  would end it early as idle.
 - **Coverage costs speed.** Precise block coverage runs for the whole Core API process.
-  `CODE_COVERAGE=off` turns it off.
+  `CODE_COVERAGE=off` turns it off. The Python services pay once per line per session, plus
+  every line of a health check or the worker's polling, which is left switched on.
 - **A restart ends every open test session**, and their timings so far are lost.
 - **Testers must send `X-Session-ID`.** A tester that names its session another way works on the
   real data until its header is added to `SESSION_HEADERS`.
@@ -95,8 +105,8 @@ These are the known limitations of SEC-Check as delivered, grouped by area.
 
 - **The health checks don't look far.**
     - The Core API's `/health` doesn't check the database.
-    - The worker has no health endpoint.
-    - Only the database and web app have Docker health checks.
+    - The worker has no health endpoint; its Docker health check only connects to its port.
+    - The Core API, Caddy, tester, log viewer and docs have no Docker health checks.
 - **Limited observability.**
     - There are no alerts. Request timings are summarized only per test session; for the real
       data there are just the per-request log lines.

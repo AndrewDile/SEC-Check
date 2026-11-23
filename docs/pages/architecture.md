@@ -82,6 +82,8 @@ The tokens are compared in constant time.
 | Core API → ingestion worker | `PUT`/`DELETE /dependencies/{id}` | `INGEST_INBOUND_TOKEN` |
 | Notification service → Core API | `/notif/*` | `NOTIF_CORE_API_TOKEN` |
 | Core API → notification service | `POST /notifications` | `NOTIF_INBOUND_TOKEN` |
+| Core API → ingestion worker, notification service | `POST /coverage/snapshot`, `GET /coverage` | their inbound tokens |
+| Core API → web app | `POST /coverage/snapshot`, `GET /coverage` | `WEBAPP_INBOUND_TOKEN` |
 
 The web app signs users in with a development placeholder, not real authentication (see
 [Web app](services/web-app.md#sign-in)).

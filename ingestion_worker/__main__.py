@@ -11,7 +11,7 @@ import threading
 
 import uvicorn
 
-from ingestion_worker import config
+from ingestion_worker import config, line_coverage
 from ingestion_worker.sources import ALL_SOURCES
 from ingestion_worker.worker import poll, run_forever
 
@@ -33,6 +33,7 @@ if args.once:
     results = [poll(source) for source in sources]
     sys.exit(0 if all(results) else 1)
 
+line_coverage.start()
 # Serve the Core API's events in the background, and poll in the foreground.
 threading.Thread(
     target=uvicorn.run,
@@ -40,6 +41,7 @@ threading.Thread(
     kwargs={"host": config.HOST, "port": config.PORT},
     daemon=True,
 ).start()
+line_coverage.quiet()  # polling isn't caused by requests, so it doesn't count; catch-ups do
 try:
     run_forever(sources)
 except KeyboardInterrupt:

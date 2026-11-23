@@ -47,7 +47,8 @@ and PR. **Every push to `main` deploys to production (EC2)**, so work on a branc
 - **Don't edit generated files.** `ingestion_worker/models.py` and `notification_service/models.py`
   are generated from that service's `core_api.openapi.yaml` by its `generate_models.sh`. Change
   the spec, then regenerate with `./verify.sh --fix generated`. `./verify.sh` fails if either is
-  out of date.
+  out of date. The worker's and notifier's `line_coverage.py` are copies of
+  `web_app/secheck_web/line_coverage.py`: edit that one, then run the same command.
 - **Keep the shared schemas identical.** Schemas defined in both `core_api.openapi.yaml` files
   (`SourceName`, `Incident`, `Priority`, ...) describe one Core API payload. The rest of each
   file is meant to differ: it lists only what that service needs.

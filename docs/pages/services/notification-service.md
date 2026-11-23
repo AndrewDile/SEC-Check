@@ -64,7 +64,10 @@ To add a channel:
 
 ## Interfaces
 
-**Notification service API**, which only the Core API calls, with `NOTIF_INBOUND_TOKEN`.
+**Notification service API**, which only the Core API calls, with `NOTIF_INBOUND_TOKEN`. The
+`/coverage` calls give the Core API the notifier's code coverage for `/test/report`.
+`line_coverage.py` (generated from the web app's copy) answers them as middleware, so they run none
+of the notifier's lines, and the Docker health check's `/healthz` doesn't count either.
 
 <swagger-ui src="../openapi/notification_service/openapi.yaml"/>
 
@@ -82,6 +85,7 @@ There's also `GET /healthz`, which returns `{"status": "ok"}`.
 | `CORE_API_URL` | `http://localhost:8000` (Compose sets `http://api:3001`) | Core API base URL |
 | `CORE_API_TOKEN` | required | Sent to the Core API |
 | `INBOUND_TOKEN` | required | Expected from the Core API |
+| `CODE_COVERAGE` | on | `off` stops counting lines |
 | `MAX_ATTEMPTS` | `3` | Tries per recipient |
 | `HTTP_TIMEOUT_S` | `10` | Timeout for each webhook post and SMTP connection, in seconds |
 | `SMTP_HOST` | empty | SMTP server. Empty turns email off: email notices fail, saying it isn't set up |
