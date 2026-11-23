@@ -1,7 +1,7 @@
 """Coverage measures for the report.
 
 Coverage counts what was exercised, not what passed:
-  component  not measured yet (null/null)
+  component  null/null; the basis names the components the suite tests
   system     acceptance criteria AC-01..AC-06; one counts when a test mapped to it got a response
   code       copied from the target's /test/report (coverage.code)
 """
@@ -11,6 +11,11 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, Optional, Set
 
 CRITERIA = ["AC-01", "AC-02", "AC-03", "AC-04", "AC-05", "AC-06"]
+# The suite only calls the Core API (and through it the database); the other services have their
+# own tests (web app: ui_tests/, ingestion worker and notification service: their tests/ folders).
+COMPONENTS_TESTED = (
+    "Components Tested: Core API, Database. Web app, notifier, and ingest tested separately"
+)
 
 
 def measure(covered: Optional[int], total: Optional[int], basis: str) -> Dict[str, Any]:
@@ -18,8 +23,8 @@ def measure(covered: Optional[int], total: Optional[int], basis: str) -> Dict[st
 
 
 def component_coverage() -> Dict[str, Any]:
-    """Component coverage isn't measured yet; the spec allows null/null with the reason."""
-    return measure(None, None, "not yet measured")
+    """Not a count: null/null (which the spec allows), with the components tested as the basis."""
+    return measure(None, None, COMPONENTS_TESTED)
 
 
 def system_coverage(responded_criteria: Iterable[str]) -> Dict[str, Any]:

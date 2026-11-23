@@ -104,7 +104,10 @@ class HappyPath(unittest.TestCase, ReportShape):
         self.assertEqual(not_passed, [])
         self.assertEqual(report["coverage"]["system"]["covered"], 6)
         self.assertIsNone(report["coverage"]["component"]["covered"])
-        self.assertEqual(report["coverage"]["component"]["basis"], "not yet measured")
+        self.assertEqual(
+            report["coverage"]["component"]["basis"],
+            "Components Tested: Core API, Database. Web app, notifier, and ingest tested separately",
+        )
         self.assertIsNone(report["coverage"]["code"]["covered"])
         # Stored report is identical and lookups don't change it.
         status, stored = call("GET", self.tester.url + "/test/report?session_id=" + sid)
