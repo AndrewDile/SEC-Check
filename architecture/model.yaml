@@ -27,6 +27,7 @@ connections:
   - { from: tunnel, to: caddy, why: "public HTTPS traffic from Cloudflare" }
 
   - { from: web_app, to: api, why: "Core API calls; no credentials" }
+  - { from: api, to: web_app, why: "/coverage for /test/report, WEBAPP_INBOUND_TOKEN" }
   - { from: tester, to: caddy, why: "runs tests against target_url (http://caddy/system in CI)" }
   - { from: api, to: db, why: "MySQL" }
 
@@ -45,3 +46,9 @@ generated:
   - file: notification_service/models.py
     from: [notification_service/core_api.openapi.yaml]
     command: notification_service/generate_models.sh
+  - file: ingestion_worker/line_coverage.py
+    from: [web_app/secheck_web/line_coverage.py]
+    command: web_app/copy_line_coverage.sh
+  - file: notification_service/line_coverage.py
+    from: [web_app/secheck_web/line_coverage.py]
+    command: web_app/copy_line_coverage.sh

@@ -42,14 +42,39 @@ trap 'exit 130' INT TERM
 $DC up -d --build --wait db api tester caddy
 for _ in {1..30}; do curl -sf "$SYSTEM/health" >/dev/null && break; sleep 1; done
 
+# A coverage window over every suite that calls the stack, for the run's total. It's a test session
+# no request joins: coverage counts all traffic between its /test/setup and /test/report.
+curl -sf -X POST "$SYSTEM/test/setup" -H 'content-type: application/json' \
+  -d '{"session_id": "ci-total"}' >/dev/null
+
 (cd tester && python3 -m unittest discover -s tests)
 uv run python -m unittest discover -s ingestion_worker/tests -t .
 uv run python -m unittest discover -s notification_service/tests -t .
 (cd api && API_URL=$SYSTEM DB_HOST=127.0.0.1 DB_PORT=$DB_HOST_PORT npm test)
+
+# The worker and notifier would report incidents into the real data the tests above use. The
+# cross-team suite runs in its own test session, so they can be up for it.
+$DC up -d --build --wait $E2E_SERVICES
 # The tester calls the system from inside the compose network, where Caddy is "caddy"
 python3 tester/run_tests.py http://caddy/system --tester "http://localhost:$HTTP_PORT/tester"
 
-# Last, because it needs the worker and notifier, which the tests above must run without
-$DC up -d --build --wait $E2E_SERVICES
+# Each end-to-end test resets the real data first
 E2E_SYSTEM_URL=$SYSTEM E2E_MAILPIT_URL=http://localhost:$MAILPIT_PORT \
   uv run python -m unittest ingestion_worker.tests.test_e2e -v
+
+# Close the coverage window: print the run's total, and add it to the CI job summary
+python3 - "$SYSTEM" <<'EOF'
+import json, os, sys, urllib.request
+
+coverage = json.load(urllib.request.urlopen(sys.argv[1] + "/test/report?session_id=ci-total"))["coverage"]
+rows = []
+for key in ("component", "code"):
+    m = coverage[key]
+    shown = "null" if m["covered"] is None else "%d/%d" % (m["covered"], m["total"])
+    print("Total coverage %-11s %s   %s" % (key + ":", shown, m["basis"]))
+    rows.append("| %s | %s | %s |" % (key, shown, m["basis"].replace("|", "\\|")))
+if os.environ.get("GITHUB_STEP_SUMMARY"):
+    with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+        head = "## Coverage of the whole run\n\n| Coverage | Covered | Basis |\n|---|---|---|\n"
+        f.write(head + "\n".join(rows) + "\n")
+EOF

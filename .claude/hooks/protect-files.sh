@@ -6,6 +6,8 @@ f=$(jq -r '.tool_input.file_path // empty')
 case "$f" in
     */models.py)
         echo "models.py is generated: edit core_api.openapi.yaml and run generate_models.sh (see /regen-contracts)" >&2 ;;
+    */ingestion_worker/line_coverage.py|*/notification_service/line_coverage.py)
+        echo "this line_coverage.py is a copy: edit web_app/secheck_web/line_coverage.py, then ./verify.sh --fix generated" >&2 ;;
     */.env)
         echo ".env holds real secrets; edit it by hand. Template changes go in .env.example" >&2 ;;
     */uv.lock|*/package-lock.json)
