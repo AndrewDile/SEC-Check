@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from notification_service import app, config
+from notification_service import app, config, line_coverage
 
 BODY = {
     "notification_id": "100",
@@ -51,3 +51,23 @@ class AcceptNotification(unittest.TestCase):
             self.assertEqual(response.status_code, 202)
             self.assertEqual(response.json(), {"notification_id": "100"})
         self.dispatch.assert_called_once()
+
+
+class Coverage(unittest.TestCase):
+    def setUp(self):
+        line_coverage.start()
+        self.client = TestClient(app.app)
+        self.auth = {"Authorization": f"Bearer {config.INBOUND_TOKEN}"}
+
+    def covered(self, since):
+        return self.client.get(f"/coverage?since={since}", headers=self.auth).json()["covered"]
+
+    def test_health_checks_do_not_count_but_requests_do(self):
+        since = self.client.post("/coverage/snapshot", headers=self.auth).json()["since"]
+        self.assertEqual(self.client.get("/healthz").status_code, 200)
+        self.assertEqual(self.covered(since), 0)
+        with patch("notification_service.app.dispatch"):
+            self.client.post(
+                "/notifications", json={**BODY, "notification_id": "cov"}, headers=self.auth
+            )
+        self.assertGreater(self.covered(since), 0)

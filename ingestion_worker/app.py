@@ -4,10 +4,11 @@ import secrets
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from ingestion_worker import config, dependency_cache, worker
+from ingestion_worker import config, dependency_cache, line_coverage, worker
 from ingestion_worker.models import Dependency
 
 app = FastAPI(title="Ingestion Worker")
+app.add_middleware(line_coverage.Middleware)  # answers the Core API's /coverage
 
 
 def _check_token(authorization: str = Header("")) -> None:

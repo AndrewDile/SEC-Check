@@ -4,11 +4,13 @@ import secrets
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 
-from notification_service import config
+from notification_service import config, line_coverage
 from notification_service.dispatcher import dispatch
 from notification_service.models import NotificationRequest
 
 app = FastAPI(title="Notification Service")
+# Answers the Core API's /coverage; the Docker health check isn't a test, so it doesn't count
+app.add_middleware(line_coverage.Middleware, ignore=("/healthz",))
 
 # IDs of notifications already accepted, so that a retry from the Core API isn't sent twice.
 # Kept in memory only: a restart forgets them.
